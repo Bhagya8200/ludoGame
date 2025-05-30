@@ -99,12 +99,12 @@ export const GameBoard: React.FC<{
       {renderTokens()}
       
       {/* Center area */}
-      <div className="absolute w-24 h-24 bg-gradient-to-br from-yellow-300 to-orange-400 border-4 border-yellow-600 rounded-lg shadow-inner"
+      {/* <div className="absolute w-24 h-24 bg-gradient-to-br from-yellow-300 to-orange-400 border-4 border-yellow-600 rounded-lg shadow-inner"
            style={{ left: '192px', top: '192px' }}>
         <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-yellow-800">
           LUDO
         </div>
-      </div>
+      </div> */}
       
       {/* Kill Zone Indicator */}
       {gameState.isKillZoneActive && (

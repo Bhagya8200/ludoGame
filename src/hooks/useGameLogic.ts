@@ -55,8 +55,8 @@ export const useGame = (socket: Socket | null) => {
       setTimeout(() => setNotification(''), 3000);
     });
 
-    socket.on('diceRolled', (value: number, playerId: string) => {
-      setNotification(`Dice rolled: ${value}`);
+    socket.on('diceRolled', (value: number, playerId: string, player: Player) => {
+      setNotification(`Dice rolled by ${player.name}: ${value}`);
       setTimeout(() => setNotification(''), 2000);
     });
 

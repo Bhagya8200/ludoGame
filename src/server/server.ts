@@ -334,7 +334,7 @@ io.on('connection', (socket) => {
     player.isReady = true;
     
     // Start game if all players ready
-    if (game.players.length >= 2 && game.players.every(p => p.isReady)) {
+    if (game.players.length >= 1 && game.players.every(p => p.isReady)) {
       game.gameStarted = true;
       game.canRollDice = true;
       startMoveTimer(game);
