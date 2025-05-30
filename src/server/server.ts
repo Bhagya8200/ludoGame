@@ -1,351 +1,378 @@
-// src/server/server.ts
+// File: src/server/server.ts
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { v4 as uuidv4 } from 'uuid';
-import { GameState, Player, Token, GameAction, GAME_RULES } from '../types/game';
+import { GameManager } from './gameManager.js';
+import type { ClientToServerEvents, ServerToClientEvents } from '../types/game.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
 
-const server = createServer(app);
-const io = new Server(server, {
+const httpServer = createServer(app);
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
     origin: "http://localhost:5173",
     methods: ["GET", "POST"]
   }
 });
 
-interface Room {
-  id: string;
-  gameState: GameState;
-  timers: Map<string, NodeJS.Timeout>;
-}
-
-const rooms = new Map<string, Room>();
-
-const createInitialGameState = (roomId: string): GameState => ({
-  id: roomId,
-  players: [],
-  currentPlayer: 0,
-  dice: 1,
-  turnCount: 0,
-  gamePhase: 'waiting',
-  rules: [...GAME_RULES],
-  powerUpCells: [10, 23, 36, 49], // Random positions for power-ups
-  trapCells: [15, 28, 41, 6], // Random trap positions
-  killZoneActive: false,
-  timeLeft: 10,
-  winner: undefined
-});
-
-const createPlayer = (id: string, name: string, color: 'red' | 'blue' | 'green' | 'yellow'): Player => ({
-  id,
-  name,
-  color,
-  tokens: Array.from({ length: 4 }, (_, i) => ({
-    id: `${id}-token-${i}`,
-    playerId: id,
-    position: -1,
-    isInHome: true,
-    isFinished: false,
-    shield: 0,
-    speedBoost: false,
-    frozen: 0
-  })),
-  score: 0,
-  kills: 0,
-  isOnline: true
-});
-
-const rollDice = (): number => Math.floor(Math.random() * 6) + 1;
-
-const isValidMove = (gameState: GameState, playerId: string, tokenId: string, steps: number): boolean => {
-  const player = gameState.players.find(p => p.id === playerId);
-  if (!player) return false;
-
-  const token = player.tokens.find(t => t.id === tokenId);
-  if (!token || token.isFinished || token.frozen > 0) return false;
-
-  // Can't move if not current player's turn
-  if (gameState.players[gameState.currentPlayer].id !== playerId) return false;
-
-  return true;
-};
-
-const moveToken = (gameState: GameState, playerId: string, tokenId: string, steps: number): boolean => {
-  if (!isValidMove(gameState, playerId, tokenId, steps)) return false;
-
-  const player = gameState.players.find(p => p.id === playerId);
-  const token = player!.tokens.find(t => t.id === tokenId);
-
-  if (token!.isInHome && steps === 6) {
-    // Move out of home
-    token!.isInHome = false;
-    token!.position = getStartPosition(player!.color);
-  } else if (!token!.isInHome) {
-    // Normal move
-    const newPosition = (token!.position + (token!.speedBoost ? steps * 2 : steps)) % 52;
-    token!.position = newPosition;
-    token!.speedBoost = false;
-
-    // Check for kills
-    checkForKills(gameState, token!, player!);
-
-    // Check for power-ups
-    if (gameState.powerUpCells.includes(newPosition)) {
-      activatePowerUp(gameState, token!, player!);
-    }
-
-    // Check for traps
-    if (gameState.trapCells.includes(newPosition)) {
-      activateTrap(gameState, token!);
-    }
-  }
-
-  return true;
-};
-
-const getStartPosition = (color: string): number => {
-  const positions = { red: 1, blue: 14, green: 27, yellow: 40 };
-  return positions[color as keyof typeof positions];
-};
-
-const checkForKills = (gameState: GameState, movedToken: Token, player: Player) => {
-  if (movedToken.shield > 0) return;
-
-  gameState.players.forEach(otherPlayer => {
-    if (otherPlayer.id === player.id) return;
-
-    otherPlayer.tokens.forEach(token => {
-      if (token.position === movedToken.position && !token.isInHome && !token.isFinished && token.shield === 0) {
-        // Check reverse kill rule
-        if (gameState.rules.find(r => r.id === 'reverseKill')?.enabled && otherPlayer.kills > player.kills) {
-          // Reverse kill - move attacking token home
-          movedToken.position = -1;
-          movedToken.isInHome = true;
-        } else {
-          // Normal kill
-          token.position = -1;
-          token.isInHome = true;
-          player.kills++;
-          player.score += 10;
-          otherPlayer.score -= 5;
-        }
-      }
-    });
-  });
-};
-
-const activatePowerUp = (gameState: GameState, token: Token, player: Player) => {
-  const powerUpType = Math.floor(Math.random() * 4);
-  
-  switch (powerUpType) {
-    case 0: // Shield
-      token.shield = 2;
-      break;
-    case 1: // Speed boost
-      token.speedBoost = true;
-      break;
-    case 2: // Teleport (handled in frontend)
-      break;
-    case 3: // Swap (handled in frontend)
-      break;
-  }
-};
-
-const activateTrap = (gameState: GameState, token: Token) => {
-  const trapType = Math.random() > 0.5 ? 'stepBack' : 'freeze';
-  
-  if (trapType === 'stepBack') {
-    token.position = Math.max(0, token.position - 3);
-  } else {
-    token.frozen = 1;
-  }
-};
-
-const nextTurn = (gameState: GameState) => {
-  // Reduce shield and frozen counters
-  gameState.players.forEach(player => {
-    player.tokens.forEach(token => {
-      if (token.shield > 0) token.shield--;
-      if (token.frozen > 0) token.frozen--;
-    });
-  });
-
-  gameState.currentPlayer = (gameState.currentPlayer + 1) % gameState.players.length;
-  gameState.turnCount++;
-  gameState.dice = rollDice();
-  gameState.timeLeft = 10;
-
-  // Check for kill zone activation
-  if (gameState.turnCount % 15 === 0 && gameState.rules.find(r => r.id === 'killZone')?.enabled) {
-    gameState.killZoneActive = !gameState.killZoneActive;
-  }
-
-  // Check win condition
-  const winner = checkWinCondition(gameState);
-  if (winner) {
-    gameState.gamePhase = 'finished';
-    gameState.winner = winner.id;
-  }
-};
-
-const checkWinCondition = (gameState: GameState): Player | null => {
-  // Check if any player has all tokens finished
-  for (const player of gameState.players) {
-    if (player.tokens.every(token => token.isFinished)) {
-      return player;
-    }
-  }
-
-  // If points system is enabled, check for score-based win (after certain turns)
-  if (gameState.rules.find(r => r.id === 'pointsSystem')?.enabled && gameState.turnCount > 100) {
-    const sortedPlayers = [...gameState.players].sort((a, b) => b.score - a.score);
-    if (sortedPlayers[0].score > sortedPlayers[1].score + 20) {
-      return sortedPlayers[0];
-    }
-  }
-
-  return null;
-};
-
-const startTurnTimer = (room: Room, playerId: string) => {
-  const timer = setTimeout(() => {
-    // Auto-skip turn
-    nextTurn(room.gameState);
-    io.to(room.id).emit('gameState', room.gameState);
-    
-    const nextPlayerId = room.gameState.players[room.gameState.currentPlayer].id;
-    startTurnTimer(room, nextPlayerId);
-  }, 10000);
-
-  room.timers.set(playerId, timer);
-};
+const gameManager = new GameManager(io);
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log(`User connected: ${socket.id}`);
 
-  socket.on('createRoom', (playerName: string) => {
-    const roomId = uuidv4();
-    const room: Room = {
-      id: roomId,
-      gameState: createInitialGameState(roomId),
-      timers: new Map()
-    };
-
-    const player = createPlayer(socket.id, playerName, 'red');
-    room.gameState.players.push(player);
-
-    rooms.set(roomId, room);
-    socket.join(roomId);
-    
-    socket.emit('roomCreated', { roomId, gameState: room.gameState });
-  });
-
-  socket.on('joinRoom', ({ roomId, playerName }: { roomId: string, playerName: string }) => {
-    const room = rooms.get(roomId);
-    if (!room || room.gameState.players.length >= 4) {
-      socket.emit('error', 'Room not found or full');
-      return;
-    }
-
-    const colors = ['red', 'blue', 'green', 'yellow'];
-    const usedColors = room.gameState.players.map(p => p.color);
-    const availableColor = colors.find(c => !usedColors.includes(c as any));
-
-    if (!availableColor) {
-      socket.emit('error', 'No available colors');
-      return;
-    }
-
-    const player = createPlayer(socket.id, playerName, availableColor as any);
-    room.gameState.players.push(player);
-
-    socket.join(roomId);
-    io.to(roomId).emit('gameState', room.gameState);
-  });
-
-  socket.on('voteRule', ({ roomId, ruleId }: { roomId: string, ruleId: string }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-
-    const rule = room.gameState.rules.find(r => r.id === ruleId);
-    if (rule) {
-      rule.votes++;
-      io.to(roomId).emit('gameState', room.gameState);
+  socket.on('createRoom', (playerName, callback) => {
+    try {
+      const roomId = gameManager.createRoom(socket.id, playerName);
+      socket.join(roomId);
+      callback(roomId);
+    } catch (error) {
+      socket.emit('error', error instanceof Error ? error.message : 'Failed to create room');
     }
   });
 
-  socket.on('startGame', (roomId: string) => {
-    const room = rooms.get(roomId);
-    if (!room || room.gameState.players.length < 2) return;
-
-    // Finalize rules based on votes
-    room.gameState.rules.forEach(rule => {
-      rule.enabled = rule.votes >= Math.ceil(room.gameState.players.length / 2);
-    });
-
-    room.gameState.gamePhase = 'playing';
-    room.gameState.dice = rollDice();
-    
-    io.to(roomId).emit('gameState', room.gameState);
-    
-    const firstPlayerId = room.gameState.players[0].id;
-    if (room.gameState.rules.find(r => r.id === 'timedMoves')?.enabled) {
-      startTurnTimer(room, firstPlayerId);
-    }
-  });
-
-  socket.on('rollDice', (roomId: string) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-
-    room.gameState.dice = rollDice();
-    io.to(roomId).emit('gameState', room.gameState);
-  });
-
-  socket.on('moveToken', ({ roomId, tokenId, steps }: { roomId: string, tokenId: string, steps: number }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-
-    if (moveToken(room.gameState, socket.id, tokenId, steps)) {
-      // Clear current timer
-      const currentTimer = room.timers.get(socket.id);
-      if (currentTimer) {
-        clearTimeout(currentTimer);
-        room.timers.delete(socket.id);
+  socket.on('joinRoom', (roomId, playerName, callback) => {
+    try {
+      const success = gameManager.joinRoom(socket.id, roomId, playerName);
+      if (success) {
+        socket.join(roomId);
       }
-
-      nextTurn(room.gameState);
-      io.to(roomId).emit('gameState', room.gameState);
-
-      // Start next player's timer
-      if (room.gameState.gamePhase === 'playing' && 
-          room.gameState.rules.find(r => r.id === 'timedMoves')?.enabled) {
-        const nextPlayerId = room.gameState.players[room.gameState.currentPlayer].id;
-        startTurnTimer(room, nextPlayerId);
-      }
+      callback(success);
+    } catch (error) {
+      socket.emit('error', error instanceof Error ? error.message : 'Failed to join room');
+      callback(false);
     }
+  });
+
+  socket.on('leaveRoom', () => {
+    gameManager.leaveRoom(socket.id);
+  });
+
+  socket.on('rollDice', () => {
+    gameManager.rollDice(socket.id);
+  });
+
+  socket.on('moveToken', (tokenId, targetPosition) => {
+    gameManager.moveToken(socket.id, tokenId, targetPosition);
+  });
+
+  socket.on('usePowerUp', (powerUp, targetData) => {
+    gameManager.usePowerUp(socket.id, powerUp, targetData);
+  });
+
+  socket.on('voteRule', (rule, vote) => {
+    gameManager.voteRule(socket.id, rule, vote);
+  });
+
+  socket.on('playerReady', () => {
+    gameManager.setPlayerReady(socket.id);
+  });
+
+  socket.on('startGame', () => {
+    gameManager.startGame(socket.id);
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    
-    // Mark player as offline in all rooms
-    rooms.forEach(room => {
-      const player = room.gameState.players.find(p => p.id === socket.id);
-      if (player) {
-        player.isOnline = false;
-        io.to(room.id).emit('gameState', room.gameState);
-      }
-    });
+    console.log(`User disconnected: ${socket.id}`);
+    gameManager.leaveRoom(socket.id);
   });
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// File: src/server/gameManager.ts
+import { Server } from 'socket.io';
+import type { 
+  ServerToClientEvents, 
+  ClientToServerEvents, 
+  RoomState, 
+  GameState, 
+  Player, 
+  Token, 
+  Cell, 
+  PlayerColor, 
+  GameRules,
+  PowerUpType,
+  CellType
+} from '../types/game.js';
+import { GameLogic } from './gameLogic.js';
+
+export class GameManager {
+  private rooms = new Map<string, RoomState>();
+  private playerRooms = new Map<string, string>();
+  private timers = new Map<string, NodeJS.Timeout>();
+
+  constructor(private io: Server<ClientToServerEvents, ServerToClientEvents>) {}
+
+  createRoom(playerId: string, playerName: string): string {
+    const roomId = this.generateRoomId();
+    const player = this.createPlayer(playerId, playerName, PlayerColor.RED);
+    
+    const room: RoomState = {
+      id: roomId,
+      players: [player],
+      maxPlayers: 4,
+      ruleVotes: this.initializeRuleVotes(),
+      allPlayersReady: false
+    };
+
+    this.rooms.set(roomId, room);
+    this.playerRooms.set(playerId, roomId);
+    
+    this.io.to(roomId).emit('roomJoined', room);
+    return roomId;
+  }
+
+  joinRoom(playerId: string, roomId: string, playerName: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || room.players.length >= room.maxPlayers) {
+      return false;
+    }
+
+    const colors = [PlayerColor.RED, PlayerColor.GREEN, PlayerColor.BLUE, PlayerColor.YELLOW];
+    const usedColors = room.players.map(p => p.color);
+    const availableColor = colors.find(color => !usedColors.includes(color));
+    
+    if (!availableColor) {
+      return false;
+    }
+
+    const player = this.createPlayer(playerId, playerName, availableColor);
+    room.players.push(player);
+    this.playerRooms.set(playerId, roomId);
+
+    this.io.to(roomId).emit('playerJoined', player);
+    this.io.to(roomId).emit('roomJoined', room);
+    
+    return true;
+  }
+
+  leaveRoom(playerId: string): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+
+    room.players = room.players.filter(p => p.id !== playerId);
+    this.playerRooms.delete(playerId);
+
+    if (room.players.length === 0) {
+      this.rooms.delete(roomId);
+      const timer = this.timers.get(roomId);
+      if (timer) {
+        clearTimeout(timer);
+        this.timers.delete(roomId);
+      }
+    } else {
+      this.io.to(roomId).emit('playerLeft', playerId);
+      this.io.to(roomId).emit('roomJoined', room);
+    }
+  }
+
+  voteRule(playerId: string, rule: keyof GameRules, vote: boolean): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room || room.gameState?.gameStarted) return;
+
+    room.ruleVotes[rule][playerId] = vote;
+    this.io.to(roomId).emit('ruleVoteUpdated', room.ruleVotes);
+  }
+
+  setPlayerReady(playerId: string): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === playerId);
+    if (player) {
+      player.isReady = true;
+      room.allPlayersReady = room.players.every(p => p.isReady);
+      this.io.to(roomId).emit('roomJoined', room);
+    }
+  }
+
+  startGame(playerId: string): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room || !room.allPlayersReady || room.players.length < 2) return;
+
+    const gameRules = this.calculateFinalRules(room.ruleVotes, room.players.length);
+    const gameState = GameLogic.initializeGame(room.players, gameRules);
+    room.gameState = gameState;
+
+    this.io.to(roomId).emit('gameStarted', gameState);
+    this.startTurnTimer(roomId);
+  }
+
+  rollDice(playerId: string): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room?.gameState) return;
+
+    const gameState = room.gameState;
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    
+    if (currentPlayer.id !== playerId || gameState.diceRolled || gameState.gameEnded) {
+      return;
+    }
+
+    const dice = Math.floor(Math.random() * 6) + 1;
+    gameState.dice = dice;
+    gameState.diceRolled = true;
+
+    this.io.to(roomId).emit('diceRolled', dice, playerId);
+    this.io.to(roomId).emit('gameUpdated', gameState);
+
+    // Check if player has valid moves
+    if (!GameLogic.hasValidMoves(gameState, currentPlayer)) {
+      setTimeout(() => this.nextTurn(roomId), 1000);
+    }
+  }
+
+  moveToken(playerId: string, tokenId: string, targetPosition: number): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room?.gameState) return;
+
+    const gameState = room.gameState;
+    const result = GameLogic.moveToken(gameState, playerId, tokenId, targetPosition);
+    
+    if (result.success) {
+      this.io.to(roomId).emit('tokenMoved', result.moveData!);
+      this.io.to(roomId).emit('gameUpdated', gameState);
+
+      if (gameState.gameEnded) {
+        this.io.to(roomId).emit('gameEnded', 
+          gameState.players.find(p => p.id === gameState.winner)!,
+          [...gameState.players].sort((a, b) => b.points - a.points)
+        );
+      } else if (gameState.dice !== 6 && !result.killedTokens?.length) {
+        setTimeout(() => this.nextTurn(roomId), 1000);
+      } else {
+        gameState.diceRolled = false;
+        this.startTurnTimer(roomId);
+      }
+    }
+  }
+
+  usePowerUp(playerId: string, powerUp: PowerUpType, targetData?: any): void {
+    const roomId = this.playerRooms.get(playerId);
+    if (!roomId) return;
+
+    const room = this.rooms.get(roomId);
+    if (!room?.gameState) return;
+
+    const result = GameLogic.usePowerUp(room.gameState, playerId, powerUp, targetData);
+    if (result) {
+      this.io.to(roomId).emit('gameUpdated', room.gameState);
+    }
+  }
+
+  private nextTurn(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room?.gameState) return;
+
+    GameLogic.nextTurn(room.gameState);
+    this.io.to(roomId).emit('gameUpdated', room.gameState);
+    this.startTurnTimer(roomId);
+  }
+
+  private startTurnTimer(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room?.gameState?.rules.timedMoves) return;
+
+    const timer = this.timers.get(roomId);
+    if (timer) clearTimeout(timer);
+
+    const gameState = room.gameState;
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    currentPlayer.timeLeft = gameState.rules.moveTimeLimit;
+
+    const countdown = setInterval(() => {
+      currentPlayer.timeLeft--;
+      this.io.to(roomId).emit('gameUpdated', gameState);
+
+      if (currentPlayer.timeLeft <= 0) {
+        clearInterval(countdown);
+        this.io.to(roomId).emit('playerTurnTimeout', currentPlayer.id);
+        this.nextTurn(roomId);
+      }
+    }, 1000);
+
+    this.timers.set(roomId, countdown);
+  }
+
+  private createPlayer(id: string, name: string, color: PlayerColor): Player {
+    return {
+      id,
+      name,
+      color,
+      tokens: this.createTokens(id, color),
+      kills: 0,
+      points: 0,
+      isReady: false,
+      timeLeft: 10
+    };
+  }
+
+  private createTokens(playerId: string, color: PlayerColor): Token[] {
+    return Array.from({ length: 4 }, (_, i) => ({
+      id: `${playerId}_token_${i}`,
+      color,
+      position: -1,
+      isActive: false,
+      powerUps: {
+        shield: 0,
+        speedBoost: false,
+        frozen: 0
+      }
+    }));
+  }
+
+  private initializeRuleVotes(): RoomState['ruleVotes'] {
+    return {
+      powerUps: {},
+      reverseKill: {},
+      timedMoves: {},
+      trapZones: {},
+      killZoneMode: {},
+      pointsSystem: {},
+      moveTimeLimit: {},
+      killZoneInterval: {}
+    };
+  }
+
+  private calculateFinalRules(votes: RoomState['ruleVotes'], playerCount: number): GameRules {
+    const majority = Math.ceil(playerCount / 2);
+    
+    return {
+      powerUps: Object.values(votes.powerUps).filter(Boolean).length >= majority,
+      reverseKill: Object.values(votes.reverseKill).filter(Boolean).length >= majority,
+      timedMoves: Object.values(votes.timedMoves).filter(Boolean).length >= majority,
+      trapZones: Object.values(votes.trapZones).filter(Boolean).length >= majority,
+      killZoneMode: Object.values(votes.killZoneMode).filter(Boolean).length >= majority,
+      pointsSystem: Object.values(votes.pointsSystem).filter(Boolean).length >= majority,
+      moveTimeLimit: 10,
+      killZoneInterval: 15
+    };
+  }
+
+  private generateRoomId(): string {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+}
