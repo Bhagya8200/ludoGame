@@ -1,163 +1,119 @@
-// File: src/components/GameBoard.tsx
-import React from 'react';
-import { PlayerColor, Token, Cell, CellType } from '../types/game.js';
-import { BOARD_PATH, HOME_POSITIONS, START_POSITIONS, FINISH_POSITIONS } from '../types/board.js';
+import type { JSX } from "react";
+import type { GameState, Player, Position } from "../types/game";
+import { canTokenMove, getHomePositions, getPositionCoords } from "../utils/boardUtils";
+import { TokenComponent } from "./Token";
+import { BoardCell } from "./BoardCell";
 
-interface GameBoardProps {
-  board: Cell[];
-  players: any[];
+export const GameBoard: React.FC<{
+  gameState: GameState;
+  currentPlayer: Player | null;
   onTokenClick: (tokenId: string) => void;
   onCellClick: (position: number) => void;
-  selectedToken?: string;
-}
-
-export const GameBoard: React.FC<GameBoardProps> = ({ 
-  board, 
-  players, 
-  onTokenClick, 
-  onCellClick, 
-  selectedToken 
-}) => {
-  const getBoardCellColor = (x: number, y: number): string => {
-    // Home areas
-    if (x >= 1 && x <= 2 && y >= 1 && y <= 2) return 'bg-red-500';
-    if (x >= 12 && x <= 13 && y >= 1 && y <= 2) return 'bg-green-500';
-    if (x >= 12 && x <= 13 && y >= 12 && y <= 13) return 'bg-yellow-500';
-    if (x >= 1 && x <= 2 && y >= 12 && y <= 13) return 'bg-blue-500';
+}> = ({ gameState, currentPlayer, onTokenClick, onCellClick }) => {
+  const renderTokens = () => {
+    const tokens: JSX.Element[] = [];
     
-    // Start positions
-    if ((x === 1 && y === 6) || (x === 8 && y === 1) || 
-        (x === 13 && y === 8) || (x === 6 && y === 13)) {
-      return 'bg-gray-300 border-4 border-black';
-    }
-    
-    // Center area
-    if (x >= 6 && x <= 8 && y >= 6 && y <= 8) {
-      return 'bg-gradient-to-br from-red-300 via-green-300 via-yellow-300 to-blue-300';
-    }
-    
-    // Safe positions
-    const position = getBoardPosition(x, y);
-    if (position !== -1 && board[position]?.type === CellType.SAFE) {
-      return 'bg-gray-200 border-2 border-blue-400';
-    }
-    
-    // Trap positions
-    if (position !== -1 && board[position]?.type === CellType.TRAP) {
-      return 'bg-red-200 border-2 border-red-600';
-    }
-    
-    // Power-up positions
-    if (position !== -1 && board[position]?.type === CellType.POWER_UP) {
-      return 'bg-purple-200 border-2 border-purple-600';
-    }
-    
-    // Regular path
-    if (position !== -1) {
-      return 'bg-white border border-gray-300';
-    }
-    
-    return 'bg-gray-100';
-  };
-
-  const getBoardPosition = (x: number, y: number): number => {
-    return BOARD_PATH.findIndex(pos => pos.x === x && pos.y === y);
-  };
-
-  const getTokensAtPosition = (x: number, y: number): Token[] => {
-    const tokens: Token[] = [];
-    
-    // Check home positions
-    Object.entries(HOME_POSITIONS).forEach(([color, positions]) => {
-      const homeIndex = positions.findIndex(pos => pos.x === x && pos.y === y);
-      if (homeIndex !== -1) {
-        const player = players.find(p => p.color === color);
-        if (player) {
-          const homeToken = player.tokens.find((t: Token) => t.position === -1);
-          if (homeToken) tokens.push(homeToken);
+    gameState.players.forEach(player => {
+      player.tokens.forEach(token => {
+        if (token.isFinished) return;
+        
+        let position: Position;
+        
+        if (token.position === -1) {
+          // Token at home
+          const homePositions = getHomePositions(player.color);
+          const homeIndex = parseInt(token.id.split('_')[1]);
+          position = homePositions[homeIndex];
+        } else if (token.isInHomeRun) {
+          // Token in home run (simplified positioning)
+          const homeRunIndex = token.position - 56;
+          position = { x: 7, y: 7 + homeRunIndex }; // Center area
+        } else {
+          // Token on main board
+          position = getPositionCoords(token.position);
         }
-      }
-    });
-    
-    // Check board positions
-    const boardPos = getBoardPosition(x, y);
-    if (boardPos !== -1) {
-      players.forEach(player => {
-        player.tokens.forEach((token: Token) => {
-          if (token.position === boardPos && token.isActive) {
-            tokens.push(token);
-          }
-        });
+        
+        const isClickable = currentPlayer?.id === player.id && 
+          canTokenMove(token, gameState.diceValue, gameState) &&
+          !gameState.canRollDice;
+        
+        tokens.push(
+          <TokenComponent
+            key={token.id}
+            token={token}
+            position={position}
+            color={player.color}
+            onClick={() => isClickable && onTokenClick(token.id)}
+            isClickable={isClickable}
+          />
+        );
       });
-    }
-    
-    // Check finish positions
-    Object.entries(FINISH_POSITIONS).forEach(([color, positions]) => {
-      const finishIndex = positions.findIndex(pos => pos.x === x && pos.y === y);
-      if (finishIndex !== -1) {
-        const player = players.find(p => p.color === color);
-        if (player) {
-          const finishToken = player.tokens.find((t: Token) => t.position === 52 + finishIndex);
-          if (finishToken) tokens.push(finishToken);
-        }
-      }
     });
     
     return tokens;
   };
 
-  const getCellContent = (x: number, y: number) => {
-    const position = getBoardPosition(x, y);
-    const cell = position !== -1 ? board[position] : null;
+  const renderBoard = () => {
+    const cells: JSX.Element[] = [];
     
-    // Show power-up icon
-    if (cell?.type === CellType.POWER_UP && cell.powerUp) {
-      const powerUpIcons = {
-        shield: '🛡️',
-        speed_boost: '⚡',
-        teleport: '🌀',
-        swap: '🔄'
-      };
-      return powerUpIcons[cell.powerUp] || '✨';
+    // Render main board path
+    for (let i = 0; i < 52; i++) {
+      cells.push(
+        <BoardCell
+          key={i}
+          position={i}
+          onClick={() => onCellClick(i)}
+        />
+      );
     }
     
-    // Show trap icon
-    if (cell?.type === CellType.TRAP) {
-      return '⚠️';
-    }
-    
-    return null;
+    return cells;
   };
 
-  const renderCell = (x: number, y: number) => {
-    const tokens = getTokensAtPosition(x, y);
-    const position = getBoardPosition(x, y);
-    const cellContent = getCellContent(x, y);
+  const renderHomeAreas = () => {
+    const areas: JSX.Element[] = [];
     
-    return (
-      <div
-        key={`${x}-${y}`}
-        className={`w-8 h-8 flex items-center justify-center relative cursor-pointer ${getBoardCellColor(x, y)}`}
-        onClick={() => position !== -1 && onCellClick(position)}
-      >
-        {cellContent && (
-          <span className="text-xs absolute top-0 right-0">{cellContent}</span>
-        )}
-        
-        {tokens.map((token, index) => (
+    ['red', 'blue', 'green', 'yellow'].forEach(color => {
+      const homePositions = getHomePositions(color);
+      homePositions.forEach((pos, index) => {
+        areas.push(
           <div
-            key={token.id}
-            className={`w-4 h-4 rounded-full border-2 border-white cursor-pointer transform transition-transform hover:scale-110 ${
-              token.color === PlayerColor.RED ? 'bg-red-600' :
-              token.color === PlayerColor.GREEN ? 'bg-green-600' :
-              token.color === PlayerColor.BLUE ? 'bg-blue-600' :
-              'bg-yellow-600'
-            } ${selectedToken === token.id ? 'ring-2 ring-black' : ''} ${
-              token.powerUps.shield > 0 ? 'ring-2 ring-blue-400' : ''
-            } ${
-              token.powerUps.frozen > 0 ? 'opacity-50' : ''
-            }`}
+            key={`${color}-home-${index}`}
+            className={`absolute w-8 h-8 border-2 border-${color}-600 bg-${color}-100 rounded`}
             style={{
-              position: 'absolute',
-              left: `${index * 3}px`,
-              top: `${
+              left: `${pos.x * 32}px`,
+              top: `${pos.y * 32}px`,
+            }}
+          />
+        );
+      });
+    });
+    
+    return areas;
+  };
+
+  return (
+    <div className="relative w-[480px] h-[480px] bg-white border-4 border-gray-800 rounded-lg shadow-2xl">
+      {renderBoard()}
+      {renderHomeAreas()}
+      {renderTokens()}
+      
+      {/* Center area */}
+      <div className="absolute w-24 h-24 bg-gradient-to-br from-yellow-300 to-orange-400 border-4 border-yellow-600 rounded-lg shadow-inner"
+           style={{ left: '192px', top: '192px' }}>
+        <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-yellow-800">
+          LUDO
+        </div>
+      </div>
+      
+      {/* Kill Zone Indicator */}
+      {gameState.isKillZoneActive && (
+        <div className="absolute inset-0 bg-red-500 bg-opacity-20 animate-pulse rounded-lg pointer-events-none">
+          <div className="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded text-sm font-bold animate-bounce">
+            ⚡ KILL ZONE ACTIVE ⚡
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -1,198 +1,190 @@
-// src/utils/boardUtils.ts
-import { Position } from '../types/game';
+// utils.ts
+import type { Position, Token, Player, PowerUp } from '../types/game';
 
 export const BOARD_SIZE = 15;
+export const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
+export const SAFE_POSITIONS = [1, 9, 14, 22, 27, 35, 40, 48];
+export const POWER_UP_POSITIONS = [5, 17, 31, 43];
+export const TRAP_POSITIONS = [11, 25, 38, 52];
 
-// Board layout mapping - each number represents a cell type
-// 0 = empty, 1 = path, 2 = home area, 3 = start, 4 = finish, 5 = safe
-export const BOARD_LAYOUT = [
-  [2, 2, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 2, 2],
-  [2, 2, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 2, 2],
-  [2, 2, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 2, 2],
-  [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-  [2, 2, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 2, 2],
-  [2, 2, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 2, 2],
-  [2, 2, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 2, 2, 2]
-];
-
-// Convert linear position (0-51) to board coordinates
-export const positionToCoordinates = (position: number): Position => {
+// Board position calculations
+export const getPositionCoords = (position: number): Position => {
   const positions: Position[] = [
-    // Starting from red's start, going clockwise
-    { x: 1, y: 6 },   // Red start
-    { x: 2, y: 6 },
-    { x: 3, y: 6 },
-    { x: 4, y: 6 },
-    { x: 5, y: 6 },
-    { x: 6, y: 5 },
-    { x: 6, y: 4 },
-    { x: 6, y: 3 },
-    { x: 6, y: 2 },
-    { x: 6, y: 1 },
-    { x: 6, y: 0 },
-    { x: 7, y: 0 },
-    { x: 8, y: 0 },
-    { x: 8, y: 1 },   // Blue start
-    { x: 8, y: 2 },
-    { x: 8, y: 3 },
-    { x: 8, y: 4 },
-    { x: 8, y: 5 },
-    { x: 9, y: 6 },
-    { x: 10, y: 6 },
-    { x: 11, y: 6 },
-    { x: 12, y: 6 },
-    { x: 13, y: 6 },
-    { x: 14, y: 6 },
-    { x: 14, y: 7 },
-    { x: 14, y: 8 },
-    { x: 13, y: 8 },   // Green start
-    { x: 12, y: 8 },
-    { x: 11, y: 8 },
-    { x: 10, y: 8 },
-    { x: 9, y: 8 },
-    { x: 8, y: 9 },
-    { x: 8, y: 10 },
-    { x: 8, y: 11 },
-    { x: 8, y: 12 },
-    { x: 8, y: 13 },
-    { x: 8, y: 14 },
-    { x: 7, y: 14 },
-    { x: 6, y: 14 },
-    { x: 6, y: 13 },   // Yellow start
-    { x: 6, y: 12 },
-    { x: 6, y: 11 },
-    { x: 6, y: 10 },
-    { x: 6, y: 9 },
-    { x: 5, y: 8 },
-    { x: 4, y: 8 },
-    { x: 3, y: 8 },
-    { x: 2, y: 8 },
-    { x: 1, y: 8 },
-    { x: 0, y: 8 },
-    { x: 0, y: 7 },
-    { x: 0, y: 6 }    // Back to red area
+    // Bottom row (0-5)
+    { x: 6, y: 14 }, { x: 5, y: 14 }, { x: 4, y: 14 }, { x: 3, y: 14 }, { x: 2, y: 14 }, { x: 1, y: 14 },
+    // Left column (6-11)
+    { x: 0, y: 13 }, { x: 0, y: 12 }, { x: 0, y: 11 }, { x: 0, y: 10 }, { x: 0, y: 9 }, { x: 0, y: 8 },
+    // Top left to center (12-17)
+    { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 },
+    // Top row (18-23)
+    { x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
+    // Right column (24-29)
+    { x: 14, y: 8 }, { x: 14, y: 9 }, { x: 14, y: 10 }, { x: 14, y: 11 }, { x: 14, y: 12 }, { x: 14, y: 13 },
+    // Bottom right to center (30-35)
+    { x: 13, y: 14 }, { x: 12, y: 14 }, { x: 11, y: 14 }, { x: 10, y: 14 }, { x: 9, y: 14 }, { x: 8, y: 14 },
+    // Right column up (36-41)
+    { x: 8, y: 13 }, { x: 8, y: 12 }, { x: 8, y: 11 }, { x: 8, y: 10 }, { x: 8, y: 9 }, { x: 8, y: 8 },
+    // Top row left (42-47)
+    { x: 6, y: 8 }, { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
+    // Left column down (48-51)
+    { x: 6, y: 9 }, { x: 6, y: 10 }, { x: 6, y: 11 }, { x: 6, y: 12 },
   ];
   
-  return positions[position % positions.length] || { x: 0, y: 0 };
+  return positions[position] || { x: 0, y: 0 };
 };
 
-// Get home area positions for each color
-export const getHomeAreaPositions = (color: string): Position[] => {
-  const homeAreas: Record<string, Position[]> = {
-    red: [
-      { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 },
-      { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 },
-      { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }
-    ],
-    blue: [
-      { x: 11, y: 1 }, { x: 12, y: 1 }, { x: 13, y: 1 },
-      { x: 11, y: 2 }, { x: 12, y: 2 }, { x: 13, y: 2 },
-      { x: 11, y: 3 }, { x: 12, y: 3 }, { x: 13, y: 3 }
-    ],
-    green: [
-      { x: 11, y: 11 }, { x: 12, y: 11 }, { x: 13, y: 11 },
-      { x: 11, y: 12 }, { x: 12, y: 12 }, { x: 13, y: 12 },
-      { x: 11, y: 13 }, { x: 12, y: 13 }, { x: 13, y: 13 }
-    ],
-    yellow: [
-      { x: 1, y: 11 }, { x: 2, y: 11 }, { x: 3, y: 11 },
-      { x: 1, y: 12 }, { x: 2, y: 12 }, { x: 3, y: 12 },
-      { x: 1, y: 13 }, { x: 2, y: 13 }, { x: 3, y: 13 }
-    ]
+export const getHomePositions = (color: string): Position[] => {
+  const homes = {
+    red: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 2 }],
+    blue: [{ x: 12, y: 1 }, { x: 13, y: 1 }, { x: 12, y: 2 }, { x: 13, y: 2 }],
+    green: [{ x: 12, y: 12 }, { x: 13, y: 12 }, { x: 12, y: 13 }, { x: 13, y: 13 }],
+    yellow: [{ x: 1, y: 12 }, { x: 2, y: 12 }, { x: 1, y: 13 }, { x: 2, y: 13 }]
   };
-  
-  return homeAreas[color] || [];
+  return homes[color as keyof typeof homes] || [];
 };
 
-// Get finish line positions for each color
-export const getFinishPositions = (color: string): Position[] => {
-  const finishPaths: Record<string, Position[]> = {
-    red: [
-      { x: 7, y: 1 }, { x: 7, y: 2 }, { x: 7, y: 3 },
-      { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 7, y: 6 }
-    ],
-    blue: [
-      { x: 9, y: 7 }, { x: 10, y: 7 }, { x: 11, y: 7 },
-      { x: 12, y: 7 }, { x: 13, y: 7 }, { x: 14, y: 7 }
-    ],
-    green: [
-      { x: 7, y: 9 }, { x: 7, y: 10 }, { x: 7, y: 11 },
-      { x: 7, y: 12 }, { x: 7, y: 13 }, { x: 7, y: 14 }
-    ],
-    yellow: [
-      { x: 1, y: 7 }, { x: 2, y: 7 }, { x: 3, y: 7 },
-      { x: 4, y: 7 }, { x: 5, y: 7 }, { x: 6, y: 7 }
-    ]
-  };
-  
-  return finishPaths[color] || [];
+export const getStartPosition = (color: string): number => {
+  const starts = { red: 0, blue: 13, green: 26, yellow: 39 };
+  return starts[color as keyof typeof starts] || 0;
 };
 
-// Check if a position is a safe spot
-export const isSafePosition = (position: Position): boolean => {
-  const safeSpots = [
-    { x: 1, y: 6 },   // Red start
-    { x: 8, y: 1 },   // Blue start  
-    { x: 13, y: 8 },  // Green start
-    { x: 6, y: 13 },  // Yellow start
-    { x: 2, y: 6 },   // Red safe
-    { x: 8, y: 2 },   // Blue safe
-    { x: 12, y: 8 },  // Green safe
-    { x: 6, y: 12 }   // Yellow safe
-  ];
-  
-  return safeSpots.some(safe => safe.x === position.x && safe.y === position.y);
+export const getHomeRunStart = (color: string): number => {
+  const homeRuns = { red: 51, blue: 12, green: 25, yellow: 38 };
+  return homeRuns[color as keyof typeof homeRuns] || 51;
 };
 
-// Check if position is in central kill zone
-export const isInKillZone = (position: Position): boolean => {
-  return position.x >= 6 && position.x <= 8 && position.y >= 6 && position.y <= 8;
-};
-
-// Get cell style classes based on position and game state
-export const getCellClasses = (
-  x: number, 
-  y: number, 
-  isPowerUp: boolean = false, 
-  isTrap: boolean = false,
-  isKillZone: boolean = false
-): string => {
-  const cellType = BOARD_LAYOUT[y]?.[x] || 0;
-  let classes = 'w-8 h-8 border border-gray-300 flex items-center justify-center relative ';
+export const canTokenMove = (token: Token, diceValue: number, gameState: any): boolean => {
+  if (token.isFinished || token.isFrozen) return false;
   
-  switch (cellType) {
-    case 0: // Empty
-      classes += 'bg-gray-100';
-      break;
-    case 1: // Path
-      classes += 'bg-white';
-      break;
-    case 2: // Home area
-      if (y < 3) classes += x < 6 ? 'bg-red-200' : 'bg-blue-200';
-      else classes += x < 6 ? 'bg-yellow-200' : 'bg-green-200';
-      break;
-    case 3: // Start
-      classes += 'bg-orange-300';
-      break;
-    case 4: // Finish
-      classes += 'bg-purple-300';
-      break;
-    case 5: // Safe
-      classes += 'bg-cyan-300';
-      break;
+  // Token at home can only move with 6
+  if (token.position === -1 && diceValue !== 6) return false;
+  
+  // Check if move would exceed home run
+  if (token.isInHomeRun) {
+    const homeRunPosition = token.position - 56;
+    return homeRunPosition + diceValue <= 5;
   }
   
-  if (isPowerUp) classes += ' ring-2 ring-yellow-400';
-  if (isTrap) classes += ' ring-2 ring-red-500';
-  if (isKillZone) classes += ' ring-2 ring-purple-600 ring-opacity-50';
+  return true;
+};
+
+export const calculateNewPosition = (token: Token, diceValue: number, playerColor: string): number => {
+  if (token.position === -1) {
+    return getStartPosition(playerColor);
+  }
   
-  return classes;
+  if (token.isInHomeRun) {
+    return token.position + diceValue;
+  }
+  
+  const homeRunStart = getHomeRunStart(playerColor);
+  const newPos = (token.position + diceValue) % 52;
+  
+  // Check if entering home run
+  if (token.position <= homeRunStart && newPos > homeRunStart) {
+    const excess = newPos - homeRunStart;
+    return 56 + excess; // Home run positions start at 56
+  }
+  
+  return newPos;
+};
+
+export const isPositionSafe = (position: number): boolean => {
+  return SAFE_POSITIONS.includes(position);
+};
+
+export const isPowerUpPosition = (position: number): boolean => {
+  return POWER_UP_POSITIONS.includes(position);
+};
+
+export const isTrapPosition = (position: number): boolean => {
+  return TRAP_POSITIONS.includes(position);
+};
+
+export const generatePowerUp = (): PowerUp => {
+  const types = ['shield', 'speed', 'teleport', 'swap'] as const;
+  const positions = POWER_UP_POSITIONS;
+  
+  return {
+    type: types[Math.floor(Math.random() * types.length)],
+    position: positions[Math.floor(Math.random() * positions.length)],
+    isActive: true
+  };
+};
+
+export const calculatePoints = (action: string, context: any = {}): number => {
+  switch (action) {
+    case 'kill':
+      return 10;
+    case 'finish_token':
+      return 5;
+    case 'complete_round':
+      return 2;
+    case 'get_killed':
+      return -5;
+    default:
+      return 0;
+  }
+};
+
+export const checkWinCondition = (player: Player): boolean => {
+  return player.tokens.every(token => token.isFinished);
+};
+
+export const getTokensAtPosition = (players: Player[], position: number): Token[] => {
+  const tokens: Token[] = [];
+  players.forEach(player => {
+    player.tokens.forEach(token => {
+      if (token.position === position && !token.isFinished) {
+        tokens.push(token);
+      }
+    });
+  });
+  return tokens;
+};
+
+export const canKillToken = (attackerToken: Token, defenderToken: Token, isKillZoneActive: boolean): boolean => {
+  // Can't kill if defender has shield
+  if (defenderToken.hasShield) return false;
+  
+  // Can't kill if on safe position (unless kill zone is active)
+  if (isPositionSafe(defenderToken.position) && !isKillZoneActive) return false;
+  
+  // Different players (unless kill zone allows team kills)
+  return attackerToken.playerId !== defenderToken.playerId;
+};
+
+export const formatTime = (seconds: number): string => {
+  return `${seconds}s`;
+};
+
+export const rollDice = (): number => {
+  return Math.floor(Math.random() * 6) + 1;
+};
+
+export const createToken = (id: string, playerId: string): Token => {
+  return {
+    id,
+    playerId,
+    position: -1,
+    isInHomeRun: false,
+    isFinished: false,
+    hasShield: false,
+    shieldTurns: 0,
+    isFrozen: false,
+    frozenTurns: 0
+  };
+};
+
+export const createPlayer = (id: string, name: string, color: string): Player => {
+  return {
+    id,
+    name,
+    color: color as any,
+    tokens: Array.from({ length: 4 }, (_, i) => createToken(`${id}_${i}`, id)),
+    kills: 0,
+    points: 0,
+    isReady: false,
+    moveTimeLeft: 0
+  };
 };
