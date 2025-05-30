@@ -217,24 +217,28 @@ const LudoGame: React.FC = () => {
 
             {/* Power-ups */}
             {availablePowerUps.length > 0 && (
-              <div className="bg-white p-4 rounded-lg shadow-lg">
-                <h3 className="font-bold text-gray-800 mb-2">Available Power-ups</h3>
-                <div className="space-y-2">
-                  {availablePowerUps.map((powerUp, index) => (
-                    <button
-                      key={index}
-                      onClick={() => selectPowerUp(powerUp.type)}
-                      className="w-full p-2 bg-purple-100 hover:bg-purple-200 rounded border text-left transition-colors"
-                    >
-                      <span className="font-medium">{powerUp.type}</span>
-                      <span className="text-sm text-gray-600 block">
-                        Position {powerUp.position}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+  <div className="bg-gradient-to-br from-purple-100 to-purple-200 p-4 rounded-xl shadow-lg border-2 border-purple-300">
+    <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
+      <span className="text-xl">✨</span>
+      Available Power-ups
+    </h3>
+    <div className="space-y-3">
+      {availablePowerUps.map((powerUp, index) => (
+        <button
+          key={index}
+          onClick={() => selectPowerUp(powerUp.type)}
+          disabled={!isCurrentPlayerTurn}
+          className={`w-full p-3 rounded-lg border-2 text-left transition-all transform hover:scale-105 ${
+            isCurrentPlayerTurn 
+              ? 'bg-gradient-to-r from-purple-200 to-purple-300 hover:from-purple-300 hover:to-purple-400 border-purple-400 shadow-md hover:shadow-lg cursor-pointer'
+              : 'bg-gray-200 border-gray-300 cursor-not-allowed opacity-60'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="font-bold text-purple-800 capitalize flex items-center gap-2">
+                {powerUp.type === 'shield' && '🛡️'}
+                {powerUp.type
           </div>
 
           {/* Game Board */}
