@@ -1,9 +1,10 @@
 import "./App.css";
+import LudoGame from "./components/MainGame";
 
 function App() {
   return (
     <>
-      <h1 className="text-3xl font-bold underline">Hello world!</h1>
+      <LudoGame />
     </>
   );
 }
