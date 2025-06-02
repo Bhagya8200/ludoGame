@@ -8,16 +8,12 @@ export const COLORS = ["red", "blue", "green", "yellow"] as const;
 // White grid positions on both sides of home run paths
 export const getWhiteGridPositions = (): Position[] => {
   return [
-    // White grids around RED home run path (horizontal row 7)
-    // Above red home run (row 6)
-
     { x: 2, y: 6 },
     { x: 3, y: 6 },
     { x: 4, y: 6 },
     { x: 5, y: 6 },
     { x: 6, y: 6 },
 
-    // Below red home run (row 8)
     { x: 1, y: 8 },
     { x: 2, y: 8 },
     { x: 3, y: 8 },
@@ -25,8 +21,6 @@ export const getWhiteGridPositions = (): Position[] => {
     { x: 5, y: 8 },
     { x: 6, y: 8 },
 
-    // White grids around GREEN home run path (vertical column 7)
-    // Left of green home run (column 6)
     { x: 6, y: 1 },
     { x: 6, y: 2 },
     { x: 6, y: 3 },
@@ -34,16 +28,12 @@ export const getWhiteGridPositions = (): Position[] => {
     { x: 6, y: 5 },
     { x: 6, y: 6 },
 
-    // Right of green home run (column 8)
-
     { x: 8, y: 2 },
     { x: 8, y: 3 },
     { x: 8, y: 4 },
     { x: 8, y: 5 },
     { x: 8, y: 6 },
 
-    // White grids around YELLOW home run path (horizontal row 7)
-    // Above yellow home run (row 6)
     { x: 8, y: 6 },
     { x: 9, y: 6 },
     { x: 10, y: 6 },
@@ -51,22 +41,18 @@ export const getWhiteGridPositions = (): Position[] => {
     { x: 12, y: 6 },
     { x: 13, y: 6 },
 
-    // Below yellow home run (row 8)
     { x: 8, y: 8 },
     { x: 9, y: 8 },
     { x: 10, y: 8 },
     { x: 11, y: 8 },
     { x: 12, y: 8 },
 
-    // White grids around BLUE home run path (vertical column 7)
-    // Left of blue home run (column 6)
     { x: 6, y: 8 },
     { x: 6, y: 9 },
     { x: 6, y: 10 },
     { x: 6, y: 11 },
     { x: 6, y: 12 },
 
-    // Right of blue home run (column 8)
     { x: 8, y: 8 },
     { x: 8, y: 9 },
     { x: 8, y: 10 },
@@ -79,8 +65,8 @@ export const getWhiteGridPositions = (): Position[] => {
 // Home run paths - colored according to their respective colors
 export const getHomeRunPositions = () => {
   return {
-    // Red home run path (horizontal)
-    red: [
+    // blue home run path (horizontal)
+    blue: [
       { x: 1, y: 6 },
       { x: 1, y: 7 },
       { x: 2, y: 7 },
@@ -109,8 +95,8 @@ export const getHomeRunPositions = () => {
       { x: 12, y: 7 },
       { x: 13, y: 7 },
     ],
-    // Blue home run path (vertical)
-    blue: [
+    // red home run path (vertical)
+    red: [
       { x: 6, y: 13 },
       { x: 7, y: 8 },
       { x: 7, y: 9 },
@@ -125,28 +111,24 @@ export const getHomeRunPositions = () => {
 // Home positions - the 2x2 squares in each colored corner
 export const getHomePositions = (color: string): Position[] => {
   const homes = {
-    // Red home area (bottom-left 2x2 square)
     red: [
       { x: 2, y: 10 },
-      { x: 3.5, y: 10 }, // Top row of red home
+      { x: 3.5, y: 10 }, 
       { x: 2, y: 11.5 },
-      { x: 3.5, y: 11.5 }, // Bottom row of red home
+      { x: 3.5, y: 11.5 }, 
     ],
-    // Green home area (top-right 2x2 square)
     green: [
       { x: 11, y: 3 },
-      { x: 12.5, y: 3 }, // Top row of green home
+      { x: 12.5, y: 3 }, 
       { x: 11, y: 4.5 },
-      { x: 12.5, y: 4.5 }, // Bottom row of green home
+      { x: 12.5, y: 4.5 }, 
     ],
-    // Yellow home area (bottom-right 2x2 square)
     yellow: [
       { x: 11, y: 10 },
       { x: 12.5, y: 10 }, // Top row of yellow home
       { x: 11, y: 11.5 },
       { x: 12.5, y: 11.5 }, // Bottom row of yellow home
     ],
-    // Blue home area (top-left 2x2 square)
     blue: [
       { x: 2, y: 3 },
       { x: 3.5, y: 3 }, // Top row of blue home

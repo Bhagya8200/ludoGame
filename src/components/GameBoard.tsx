@@ -7,6 +7,7 @@ import {
   getHomeRunPositions, // Import the new home run function
 } from "../utils/boardUtils";
 import { BoardCell } from "./BoardCell";
+import { TokenComponent } from "./Token"; // Import the Token component
 
 export const GameBoard: React.FC<{
   gameState: GameState;
@@ -19,7 +20,7 @@ export const GameBoard: React.FC<{
 
     gameState.players.forEach((player) => {
       player.tokens.forEach((token) => {
-        if (token.isFinished) return;
+        if (token.isFinished) return; // Skip finished tokens
 
         let position: Position;
 
@@ -29,16 +30,72 @@ export const GameBoard: React.FC<{
           const homeIndex = parseInt(token.id.split("_")[1]);
           position = homePositions[homeIndex];
         } else if (token.isInHomeRun) {
-          // Token in home run (simplified positioning)
+          // Token in home run - use getHomeRunPositions for proper positioning
+          const homeRunPositions = getHomeRunPositions();
+          const colorPositions =
+            homeRunPositions[player.color as keyof typeof homeRunPositions];
           const homeRunIndex = token.position - 56;
-          position = { x: 7, y: 7 + homeRunIndex }; // Center area
+          if (homeRunIndex >= 0 && homeRunIndex < colorPositions.length) {
+            position = colorPositions[homeRunIndex];
+          } else {
+            position = { x: 7, y: 7 }; // fallback to center
+          }
         } else {
-          position = { x: 0, y: 0 };
+          // Token on main board - you'll need to implement getBoardPosition
+          // For now, using a simple calculation - you should replace this with proper board positioning
+          position = getBoardPosition(token.position);
         }
+
+        // Check if token is clickable (current player's turn and can move)
+        const isClickable =
+          currentPlayer?.id === player.id &&
+          canTokenMove(token, gameState.diceValue, gameState);
+
+        // Add the token to the array
+        tokens.push(
+          <TokenComponent
+            key={token.id}
+            token={token}
+            position={position}
+            color={player.color}
+            onClick={() => onTokenClick(token.id)}
+            isClickable={isClickable}
+          />
+        );
       });
     });
 
     return tokens;
+  };
+
+  // Helper function to get board position - you'll need to implement this based on your board layout
+  const getBoardPosition = (boardPosition: number): Position => {
+    // This is a simplified version - you should implement proper board positioning
+    // based on your actual board layout. For now, returning a simple grid position.
+
+    // Example board positions (you'll need to adjust these based on your actual board)
+    const boardPositions: Position[] = [
+      // Starting positions for each color (you'll need to define all 52 positions)
+      { x: 6, y: 1 }, // position 0
+      { x: 6, y: 2 }, // position 1
+      { x: 6, y: 3 }, // position 2
+      { x: 6, y: 4 }, // position 3
+      { x: 6, y: 5 }, // position 4
+      { x: 6, y: 6 }, // position 5
+      { x: 7, y: 6 }, // position 6
+      { x: 8, y: 6 }, // position 7
+      { x: 9, y: 6 }, // position 8
+      { x: 10, y: 6 }, // position 9
+      { x: 11, y: 6 }, // position 10
+      { x: 12, y: 6 }, // position 11
+      { x: 13, y: 6 }, // position 12
+      { x: 13, y: 7 }, // position 13
+      { x: 13, y: 8 }, // position 14
+      // ... continue for all 52 positions
+    ];
+
+    // Return the position if it exists, otherwise return center
+    return boardPositions[boardPosition] || { x: 7, y: 7 };
   };
 
   const renderBoard = () => {
@@ -160,11 +217,11 @@ export const GameBoard: React.FC<{
                 if (index >= 1) {
                   switch (color) {
                     case "red":
-                      return "→";
+                      return "↑";
                     case "green":
                       return "↓";
                     case "blue":
-                      return "↑";
+                      return "→";
                     case "yellow":
                       return "←";
                     default:
@@ -204,6 +261,8 @@ export const GameBoard: React.FC<{
 
       {renderBoard()}
       {renderHomeAreas()}
+
+      {/* RENDER TOKENS - This was missing the actual rendering! */}
       {renderTokens()}
 
       {/* Center area - Enhanced design */}
