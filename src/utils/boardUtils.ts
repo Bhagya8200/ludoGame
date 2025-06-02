@@ -79,7 +79,7 @@ export const getHomeRunPositions = () => {
       // { x: 7, y: 7 }, // Center finish
     ],
     // Blue home run path (going right from left)
-    yellow: [
+    blue: [
       { x: 1, y: 7 },
       { x: 2, y: 7 },
       { x: 3, y: 7 },
@@ -99,7 +99,7 @@ export const getHomeRunPositions = () => {
       // { x: 7, y: 7 }, // Center finish
     ],
     // Yellow home run path (going left from right)
-    blue: [
+    yellow: [
       { x: 13, y: 7 },
       { x: 12, y: 7 },
       { x: 11, y: 7 },
