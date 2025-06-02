@@ -257,6 +257,39 @@ export const canTokenMove = (
   return true;
 };
 
+// export const calculateNewPosition = (
+//   token: Token,
+//   diceValue: number,
+//   playerColor: string
+// ): number => {
+//   if (token.position === -1) {
+//     // Token leaving home
+//     return getStartPosition(playerColor);
+//   }
+
+//   if (token.isInHomeRun) {
+//     // Token moving in home run
+//     return token.position + diceValue;
+//   }
+
+//   const homeRunStart = getHomeRunStart(playerColor);
+//   let newPos = token.position + diceValue;
+
+//   // Handle wrapping around the main track (52 positions: 0-51)
+//   if (newPos > 51) {
+//     newPos = newPos - 52; // Wrap around
+//   }
+
+//   // Check if entering home run
+//   if (token.position <= homeRunStart && newPos >= homeRunStart) {
+//     // Enter home run
+//     const excess = newPos - homeRunStart;
+//     return 56 + excess; // Home run starts at position 56
+//   }
+
+//   return newPos;
+// };
+
 export const calculateNewPosition = (
   token: Token,
   diceValue: number,
@@ -275,16 +308,28 @@ export const calculateNewPosition = (
   const homeRunStart = getHomeRunStart(playerColor);
   let newPos = token.position + diceValue;
 
-  // Handle wrapping around the main track (52 positions: 0-51)
-  if (newPos > 51) {
-    newPos = newPos - 52; // Wrap around
-  }
-
-  // Check if entering home run
-  if (token.position <= homeRunStart && newPos >= homeRunStart) {
-    // Enter home run
+  // Check if token has completed a full circuit and should enter home run
+  // This is the key fix - we need to check if the token has passed its home run entrance
+  if (token.position < homeRunStart && newPos >= homeRunStart) {
+    // Token is entering home run for the first time
     const excess = newPos - homeRunStart;
     return 56 + excess; // Home run starts at position 56
+  }
+
+  // Handle wrapping around the main track only if not entering home run
+  if (newPos > 51) {
+    // Check if this wrap-around would cross the home run entrance
+    const wrappedPos = newPos - 52;
+
+    // If the wrapped position would be at or past the home run entrance,
+    // and the token started before the home run entrance, enter home run
+    if (wrappedPos >= homeRunStart && token.position < homeRunStart) {
+      const excess = wrappedPos - homeRunStart;
+      return 56 + excess;
+    }
+
+    // Otherwise, just wrap around normally
+    return wrappedPos;
   }
 
   return newPos;

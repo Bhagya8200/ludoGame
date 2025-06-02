@@ -148,6 +148,110 @@ function nextTurn(game: GameState) {
   startMoveTimer(game);
 }
 
+// function moveToken(
+//   game: GameState,
+//   playerId: string,
+//   tokenId: string
+// ): MoveResult {
+//   const player = game.players.find((p) => p.id === playerId);
+//   if (!player)
+//     return { success: false, pointsEarned: 0, message: "Player not found" };
+
+//   const token = player.tokens.find((t) => t.id === tokenId);
+//   if (!token)
+//     return { success: false, pointsEarned: 0, message: "Token not found" };
+
+//   if (!canTokenMove(token, game.diceValue, game)) {
+//     return { success: false, pointsEarned: 0, message: "Token cannot move" };
+//   }
+
+//   const oldPosition = token.position;
+//   const newPosition = calculateNewPosition(token, game.diceValue, player.color);
+
+//   // Check if entering home run
+//   if (newPosition >= 56) {
+//     token.isInHomeRun = true;
+//     token.position = newPosition;
+
+//     // Check if finished
+//     if (newPosition >= 61) {
+//       token.isFinished = true;
+//       player.points += calculatePoints("finish_token");
+
+//       // Check win condition
+//       if (checkWinCondition(player)) {
+//         game.gameEnded = true;
+//         game.winner = player.id;
+//       }
+//     }
+//   } else {
+//     token.position = newPosition;
+//   }
+
+//   let result: MoveResult = { success: true, pointsEarned: 0 };
+
+//   // Check for power-ups
+//   const powerUp = game.powerUps.find(
+//     (p) => p.position === newPosition && p.isActive
+//   );
+//   if (powerUp) {
+//     powerUp.isActive = false;
+//     result.powerUpActivated = powerUp;
+
+//     // Apply power-up effect
+//     switch (powerUp.type) {
+//       case "shield":
+//         token.hasShield = true;
+//         token.shieldTurns = 2;
+//         break;
+//       case "speed":
+//         // Speed boost applied on next move (handled in canTokenMove)
+//         break;
+//     }
+
+//     // Spawn new power-up
+//     setTimeout(() => {
+//       if (games.has(game.id)) {
+//         const newPowerUp = generatePowerUp();
+//         game.powerUps.push(newPowerUp);
+//         io.to(game.id).emit("powerUpSpawned", newPowerUp);
+//       }
+//     }, 5000);
+//   }
+
+//   // Check for trap zones
+//   if (isTrapPosition(newPosition) && !token.hasShield) {
+//     const trapEffect = Math.random() < 0.5 ? "back" : "freeze";
+
+//     if (trapEffect === "back") {
+//       token.position = Math.max(0, token.position - 3);
+//       result.message = "Trap activated! Moved back 3 steps.";
+//     } else {
+//       token.isFrozen = true;
+//       token.frozenTurns = 1;
+//       result.message = "Trap activated! Token frozen for 1 turn.";
+//     }
+//   }
+
+//   // Award points for completing rounds
+//   if (oldPosition > newPosition && !token.isInHomeRun) {
+//     player.points += calculatePoints("complete_round");
+//   }
+
+//   result.pointsEarned = player.points;
+
+//   // Next turn if didn't roll 6
+//   if (game.diceValue !== 6) {
+//     nextTurn(game);
+//   } else {
+//     game.canRollDice = true;
+//     clearMoveTimer(game.id);
+//     startMoveTimer(game);
+//   }
+
+//   return result;
+// }
+
 function moveToken(
   game: GameState,
   playerId: string,
@@ -168,73 +272,75 @@ function moveToken(
   const oldPosition = token.position;
   const newPosition = calculateNewPosition(token, game.diceValue, player.color);
 
-  // Check if entering home run
-  if (newPosition >= 56) {
+  // Check if entering home run (position >= 56 means home run)
+  if (newPosition >= 56 && !token.isInHomeRun) {
     token.isInHomeRun = true;
-    token.position = newPosition;
+  }
 
-    // Check if finished
-    if (newPosition >= 61) {
-      token.isFinished = true;
-      player.points += calculatePoints("finish_token");
+  token.position = newPosition;
 
-      // Check win condition
-      if (checkWinCondition(player)) {
-        game.gameEnded = true;
-        game.winner = player.id;
-      }
+  // Check if finished (home run position 62 = 56 + 6, the final spot)
+  if (token.isInHomeRun && newPosition >= 62) {
+    token.isFinished = true;
+    player.points += calculatePoints("finish_token");
+
+    // Check win condition
+    if (checkWinCondition(player)) {
+      game.gameEnded = true;
+      game.winner = player.id;
     }
-  } else {
-    token.position = newPosition;
   }
 
   let result: MoveResult = { success: true, pointsEarned: 0 };
 
-  // Check for power-ups
-  const powerUp = game.powerUps.find(
-    (p) => p.position === newPosition && p.isActive
-  );
-  if (powerUp) {
-    powerUp.isActive = false;
-    result.powerUpActivated = powerUp;
+  // Only check for power-ups and traps on main board (not in home run)
+  if (!token.isInHomeRun) {
+    // Check for power-ups
+    const powerUp = game.powerUps.find(
+      (p) => p.position === newPosition && p.isActive
+    );
+    if (powerUp) {
+      powerUp.isActive = false;
+      result.powerUpActivated = powerUp;
 
-    // Apply power-up effect
-    switch (powerUp.type) {
-      case "shield":
-        token.hasShield = true;
-        token.shieldTurns = 2;
-        break;
-      case "speed":
-        // Speed boost applied on next move (handled in canTokenMove)
-        break;
-    }
-
-    // Spawn new power-up
-    setTimeout(() => {
-      if (games.has(game.id)) {
-        const newPowerUp = generatePowerUp();
-        game.powerUps.push(newPowerUp);
-        io.to(game.id).emit("powerUpSpawned", newPowerUp);
+      // Apply power-up effect
+      switch (powerUp.type) {
+        case "shield":
+          token.hasShield = true;
+          token.shieldTurns = 2;
+          break;
+        case "speed":
+          // Speed boost applied on next move (handled in canTokenMove)
+          break;
       }
-    }, 5000);
-  }
 
-  // Check for trap zones
-  if (isTrapPosition(newPosition) && !token.hasShield) {
-    const trapEffect = Math.random() < 0.5 ? "back" : "freeze";
+      // Spawn new power-up
+      setTimeout(() => {
+        if (games.has(game.id)) {
+          const newPowerUp = generatePowerUp();
+          game.powerUps.push(newPowerUp);
+          io.to(game.id).emit("powerUpSpawned", newPowerUp);
+        }
+      }, 5000);
+    }
 
-    if (trapEffect === "back") {
-      token.position = Math.max(0, token.position - 3);
-      result.message = "Trap activated! Moved back 3 steps.";
-    } else {
-      token.isFrozen = true;
-      token.frozenTurns = 1;
-      result.message = "Trap activated! Token frozen for 1 turn.";
+    // Check for trap zones
+    if (isTrapPosition(newPosition) && !token.hasShield) {
+      const trapEffect = Math.random() < 0.5 ? "back" : "freeze";
+
+      if (trapEffect === "back") {
+        token.position = Math.max(0, token.position - 3);
+        result.message = "Trap activated! Moved back 3 steps.";
+      } else {
+        token.isFrozen = true;
+        token.frozenTurns = 1;
+        result.message = "Trap activated! Token frozen for 1 turn.";
+      }
     }
   }
 
-  // Award points for completing rounds
-  if (oldPosition > newPosition && !token.isInHomeRun) {
+  // Award points for completing rounds (only on main board)
+  if (oldPosition > newPosition && !token.isInHomeRun && oldPosition < 52) {
     player.points += calculatePoints("complete_round");
   }
 
