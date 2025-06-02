@@ -94,11 +94,6 @@ export const useGame = (socket: Socket | null) => {
       setTimeout(() => setNotification(''), 3000);
     });
 
-    socket.on('killZoneActivated', () => {
-      setNotification('⚡ KILL ZONE ACTIVATED! ⚡');
-      setTimeout(() => setNotification(''), 5000);
-    });
-
     socket.on('powerUpSpawned', (powerUp: PowerUp) => {
       setNotification(`New power-up available: ${powerUp.type}`);
       setTimeout(() => setNotification(''), 3000);
@@ -119,7 +114,6 @@ export const useGame = (socket: Socket | null) => {
       socket.off('gameEnded');
       socket.off('timeWarning');
       socket.off('turnSkipped');
-      socket.off('killZoneActivated');
       socket.off('powerUpSpawned');
       socket.off('error');
     };

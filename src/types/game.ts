@@ -43,7 +43,6 @@ export interface GameState {
   gameEnded: boolean;
   winner: string | null;
   turnCount: number;
-  isKillZoneActive: boolean;
   powerUps: PowerUp[];
   trapZones: number[];
   lastRollTime: number;
@@ -54,7 +53,6 @@ export interface GameSettings {
   moveTimeLimit: number; // seconds
   powerUpsEnabled: boolean;
   trapZonesEnabled: boolean;
-  reverseKillEnabled: boolean;
   pointsSystemEnabled: boolean;
 }
 

@@ -43,7 +43,6 @@ const defaultSettings: GameSettings = {
   moveTimeLimit: 10,
   powerUpsEnabled: true,
   trapZonesEnabled: true,
-  reverseKillEnabled: true,
   pointsSystemEnabled: true
 };
 
@@ -58,7 +57,6 @@ function createNewGame(roomId: string): GameState {
     gameEnded: false,
     winner: null,
     turnCount: 0,
-    isKillZoneActive: false,
     powerUps: [],
     trapZones: TRAP_POSITIONS,
     lastRollTime: Date.now()
@@ -90,21 +88,6 @@ function updateTokenEffects(player: Player) {
       }
     }
   });
-}
-
-function handleKillZoneActivation(game: GameState) {
-  if (game.turnCount > 0 && game.turnCount % 15 === 0) {
-    game.isKillZoneActive = true;
-    io.to(game.id).emit('killZoneActivated');
-    
-    // Deactivate after 3 turns
-    setTimeout(() => {
-      if (games.has(game.id)) {
-        game.isKillZoneActive = false;
-        io.to(game.id).emit('gameStateUpdate', game);
-      }
-    }, 30000); // 30 seconds
-  }
 }
 
 function startMoveTimer(game: GameState) {
@@ -154,9 +137,6 @@ function nextTurn(game: GameState) {
   game.diceValue = 0;
   game.turnCount++;
   
-  // Check for kill zone activation
-  handleKillZoneActivation(game);
-  
   // Start timer for next player
   startMoveTimer(game);
 }
@@ -196,41 +176,6 @@ function moveToken(game: GameState, playerId: string, tokenId: string): MoveResu
   }
   
   let result: MoveResult = { success: true, pointsEarned: 0 };
-  
-  // Check for kills
-  if (newPosition < 56) {
-    const tokensAtPosition = getTokensAtPosition(game.players, newPosition);
-    const targetTokens = tokensAtPosition.filter(t => t.id !== token.id);
-    
-    for (const targetToken of targetTokens) {
-      if (canKillToken(token, targetToken, game.isKillZoneActive)) {
-        const targetPlayer = game.players.find(p => p.id === targetToken.playerId)!;
-        const settings = gameSettings.get(game.id) || defaultSettings;
-        
-        // Reverse kill logic
-        if (settings.reverseKillEnabled && targetPlayer.kills > player.kills) {
-          // Attacker goes home instead
-          token.position = -1;
-          token.isInHomeRun = false;
-          player.points += calculatePoints('get_killed');
-          result.message = 'Reverse kill! Your token was sent home.';
-        } else {
-          // Normal kill
-          targetToken.position = -1;
-          targetToken.isInHomeRun = false;
-          targetToken.hasShield = false;
-          targetToken.shieldTurns = 0;
-          
-          player.kills++;
-          player.points += calculatePoints('kill');
-          targetPlayer.points += calculatePoints('get_killed');
-          
-          result.killedToken = targetToken;
-        }
-        break;
-      }
-    }
-  }
   
   // Check for power-ups
   const powerUp = game.powerUps.find(p => p.position === newPosition && p.isActive);

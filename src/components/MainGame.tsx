@@ -217,28 +217,54 @@ const LudoGame: React.FC = () => {
 
             {/* Power-ups */}
             {availablePowerUps.length > 0 && (
-  <div className="bg-gradient-to-br from-purple-100 to-purple-200 p-4 rounded-xl shadow-lg border-2 border-purple-300">
-    <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
-      <span className="text-xl">✨</span>
-      Available Power-ups
-    </h3>
-    <div className="space-y-3">
-      {availablePowerUps.map((powerUp, index) => (
-        <button
-          key={index}
-          onClick={() => selectPowerUp(powerUp.type)}
-          disabled={!isCurrentPlayerTurn}
-          className={`w-full p-3 rounded-lg border-2 text-left transition-all transform hover:scale-105 ${
-            isCurrentPlayerTurn 
-              ? 'bg-gradient-to-r from-purple-200 to-purple-300 hover:from-purple-300 hover:to-purple-400 border-purple-400 shadow-md hover:shadow-lg cursor-pointer'
-              : 'bg-gray-200 border-gray-300 cursor-not-allowed opacity-60'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="font-bold text-purple-800 capitalize flex items-center gap-2">
-                {powerUp.type === 'shield' && '🛡️'}
-                {powerUp.type
+              <div className="bg-gradient-to-br from-purple-100 to-purple-200 p-4 rounded-xl shadow-lg border-2 border-purple-300">
+                <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
+                  <span className="text-xl">✨</span>
+                  Available Power-ups
+                </h3>
+                <div className="space-y-3">
+                  {availablePowerUps.map((powerUp, index) => (
+                    <button
+                      key={index}
+                      onClick={() => selectPowerUp(powerUp.type)}
+                      disabled={!isCurrentPlayerTurn}
+                      className={`w-full p-3 rounded-lg border-2 text-left transition-all transform hover:scale-105 ${
+                        isCurrentPlayerTurn 
+                          ? 'bg-gradient-to-r from-purple-200 to-purple-300 hover:from-purple-300 hover:to-purple-400 border-purple-400 shadow-md hover:shadow-lg cursor-pointer'
+                          : 'bg-gray-200 border-gray-300 cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-purple-800 capitalize flex items-center gap-2">
+                            {powerUp.type === 'shield' && '🛡️'}
+                            {powerUp.type === 'teleport' && '⚡'}
+                            {powerUp.type === 'swap' && '🔄'}
+                            {powerUp.type === 'speed' && '🚀'}
+                            {/* {powerUp.type === 'freeze' && '❄️'} */}
+                            {powerUp.type}
+                          </span>
+                          <div className="text-xs text-purple-600 mt-1">
+                            {powerUp.type === 'shield' && 'Protect your token from attacks'}
+                            {powerUp.type === 'teleport' && 'Move to any position instantly'}
+                            {powerUp.type === 'swap' && 'Exchange positions with opponent'}
+                            {powerUp.type === 'speed' && 'Move extra spaces'}
+                            {/* {powerUp.type === 'freeze' && 'Freeze opponent token'} */}
+                          </div>
+                        </div>
+                        <div className="text-purple-600 text-xl">
+                          {powerUp.type === 'shield' && '🛡️'}
+                          {powerUp.type === 'teleport' && '⚡'}
+                          {powerUp.type === 'swap' && '🔄'}
+                          {powerUp.type === 'speed' && '🚀'}
+                          {/* {powerUp.type === 'freeze' && '❄️'} */}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Game Board */}
@@ -296,14 +322,14 @@ const LudoGame: React.FC = () => {
               <div className="text-2xl font-bold">{availablePowerUps.length}</div>
               <div className="text-sm">Power-ups</div>
             </div>
-            <div>
+            {/* <div>
               <div className="text-2xl font-bold">
                 {gameState.isKillZoneActive ? '⚡' : '🛡️'}
               </div>
               <div className="text-sm">
                 {gameState.isKillZoneActive ? 'Kill Zone' : 'Safe Zone'}
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

@@ -1,107 +1,125 @@
 // utils.ts
+import { LeafyGreen } from "lucide-react";
 import type { Position, Token, Player, PowerUp } from "../types/game";
 
 export const BOARD_SIZE = 15;
 export const COLORS = ["red", "blue", "green", "yellow"] as const;
 
-// Coordinates mapped exactly to match the traditional Ludo board image
-export const getPositionCoords = (position: number): Position => {
-  const positions: Position[] = [
-    // RED path starts from red arrow going LEFT across bottom of red section
-    { x: 6, y: 8 }, // 0 - Red start (red arrow position)
-    { x: 5, y: 8 }, // 1
-    { x: 4, y: 8 }, // 2
-    { x: 3, y: 8 }, // 3
-    { x: 2, y: 8 }, // 4
-    { x: 1, y: 8 }, // 5
+// White grid positions on both sides of home run paths
+export const getWhiteGridPositions = (): Position[] => {
+  return [
+    // White grids around RED home run path (horizontal row 7)
+    // Above red home run (row 6)
 
-    // Going UP the left edge
-    { x: 1, y: 7 }, // 6
-    { x: 1, y: 6 }, // 7 - Safe position (star)
-    { x: 1, y: 5 }, // 8
-    { x: 1, y: 4 }, // 9
-    { x: 1, y: 3 }, // 10
-    { x: 1, y: 2 }, // 11
-    { x: 1, y: 1 }, // 12
+    { x: 2, y: 6 },
+    { x: 3, y: 6 },
+    { x: 4, y: 6 },
+    { x: 5, y: 6 },
+    { x: 6, y: 6 },
 
-    // GREEN path starts from green arrow going RIGHT across top of green section
-    { x: 2, y: 1 }, // 13 - Green start (green arrow position)
-    { x: 3, y: 1 }, // 14 - Safe position (star)
-    { x: 4, y: 1 }, // 15
-    { x: 5, y: 1 }, // 16
-    { x: 6, y: 1 }, // 17
-    { x: 7, y: 1 }, // 18
-    { x: 8, y: 1 }, // 19
-    { x: 9, y: 1 }, // 20
-    { x: 10, y: 1 }, // 21 - Safe position (star)
-    { x: 11, y: 1 }, // 22
-    { x: 12, y: 1 }, // 23
-    { x: 13, y: 1 }, // 24
-    { x: 13, y: 2 }, // 25
+    // Below red home run (row 8)
+    { x: 1, y: 8 },
+    { x: 2, y: 8 },
+    { x: 3, y: 8 },
+    { x: 4, y: 8 },
+    { x: 5, y: 8 },
+    { x: 6, y: 8 },
 
-    // YELLOW path starts from yellow arrow going DOWN right edge of yellow section
-    { x: 13, y: 3 }, // 26 - Yellow start (yellow arrow position)
-    { x: 13, y: 4 }, // 27 - Safe position (star)
-    { x: 13, y: 5 }, // 28
-    { x: 13, y: 6 }, // 29
-    { x: 13, y: 7 }, // 30
-    { x: 13, y: 8 }, // 31
-    { x: 13, y: 9 }, // 32
-    { x: 13, y: 10 }, // 33
-    { x: 13, y: 11 }, // 34 - Safe position (star)
-    { x: 13, y: 12 }, // 35
-    { x: 13, y: 13 }, // 36
-    { x: 12, y: 13 }, // 37
-    { x: 11, y: 13 }, // 38
+    // White grids around GREEN home run path (vertical column 7)
+    // Left of green home run (column 6)
+    { x: 6, y: 1 },
+    { x: 6, y: 2 },
+    { x: 6, y: 3 },
+    { x: 6, y: 4 },
+    { x: 6, y: 5 },
+    { x: 6, y: 6 },
 
-    // BLUE path starts from blue arrow going LEFT across bottom of blue section
-    { x: 10, y: 13 }, // 39 - Blue start (blue arrow position)
-    { x: 9, y: 13 }, // 40 - Safe position (star)
-    { x: 8, y: 13 }, // 41
-    { x: 7, y: 13 }, // 42
-    { x: 6, y: 13 }, // 43
-    { x: 5, y: 13 }, // 44
-    { x: 4, y: 13 }, // 45
-    { x: 3, y: 13 }, // 46
-    { x: 2, y: 13 }, // 47 - Safe position (star)
-    { x: 1, y: 13 }, // 48
-    { x: 1, y: 12 }, // 49
-    { x: 1, y: 11 }, // 50
-    { x: 1, y: 10 }, // 51
-    { x: 1, y: 9 }, // 52 - Completing the circle back to red
+    // Right of green home run (column 8)
 
-    // HOME RUN paths - colored columns/rows leading to center
+    { x: 8, y: 2 },
+    { x: 8, y: 3 },
+    { x: 8, y: 4 },
+    { x: 8, y: 5 },
+    { x: 8, y: 6 },
 
-    // RED home run - going RIGHT toward center (red colored column)
-    { x: 2, y: 7 }, // 53 - First red home run square
-    { x: 3, y: 7 }, // 54
-    { x: 4, y: 7 }, // 55
-    { x: 5, y: 7 }, // 56
-    { x: 6, y: 7 }, // 57 - Red finish (center triangle area)
+    // White grids around YELLOW home run path (horizontal row 7)
+    // Above yellow home run (row 6)
+    { x: 8, y: 6 },
+    { x: 9, y: 6 },
+    { x: 10, y: 6 },
+    { x: 11, y: 6 },
+    { x: 12, y: 6 },
+    { x: 13, y: 6 },
 
-    // GREEN home run - going DOWN toward center (green colored row)
-    { x: 7, y: 2 }, // 58 - First green home run square
-    { x: 7, y: 3 }, // 59
-    { x: 7, y: 4 }, // 60
-    { x: 7, y: 5 }, // 61
-    { x: 7, y: 6 }, // 62 - Green finish (center triangle area)
+    // Below yellow home run (row 8)
+    { x: 8, y: 8 },
+    { x: 9, y: 8 },
+    { x: 10, y: 8 },
+    { x: 11, y: 8 },
+    { x: 12, y: 8 },
 
-    // YELLOW home run - going LEFT toward center (yellow colored column)
-    { x: 12, y: 7 }, // 63 - First yellow home run square
-    { x: 11, y: 7 }, // 64
-    { x: 10, y: 7 }, // 65
-    { x: 9, y: 7 }, // 66
-    { x: 8, y: 7 }, // 67 - Yellow finish (center triangle area)
+    // White grids around BLUE home run path (vertical column 7)
+    // Left of blue home run (column 6)
+    { x: 6, y: 8 },
+    { x: 6, y: 9 },
+    { x: 6, y: 10 },
+    { x: 6, y: 11 },
+    { x: 6, y: 12 },
 
-    // BLUE home run - going UP toward center (blue colored row)
-    { x: 7, y: 12 }, // 68 - First blue home run square
-    { x: 7, y: 11 }, // 69
-    { x: 7, y: 10 }, // 70
-    { x: 7, y: 9 }, // 71
-    { x: 7, y: 8 }, // 72 - Blue finish (center triangle area)
+    // Right of blue home run (column 8)
+    { x: 8, y: 8 },
+    { x: 8, y: 9 },
+    { x: 8, y: 10 },
+    { x: 8, y: 11 },
+    { x: 8, y: 12 },
+    { x: 8, y: 13 },
   ];
+};
 
-  return positions[position] || { x: 7, y: 7 };
+// Home run paths - colored according to their respective colors
+export const getHomeRunPositions = () => {
+  return {
+    // Red home run path (horizontal)
+    red: [
+      { x: 1, y: 6 },
+      { x: 1, y: 7 },
+      { x: 2, y: 7 },
+      { x: 3, y: 7 },
+      { x: 4, y: 7 },
+      { x: 5, y: 7 },
+      { x: 6, y: 7 },
+    ],
+    // Green home run path (vertical)
+    green: [
+      { x: 8, y: 1 },
+      { x: 7, y: 1 },
+      { x: 7, y: 2 },
+      { x: 7, y: 3 },
+      { x: 7, y: 4 },
+      { x: 7, y: 5 },
+      { x: 7, y: 6 },
+    ],
+    // Yellow home run path (horizontal)
+    yellow: [
+      { x: 13, y: 8 },
+      { x: 8, y: 7 },
+      { x: 9, y: 7 },
+      { x: 10, y: 7 },
+      { x: 11, y: 7 },
+      { x: 12, y: 7 },
+      { x: 13, y: 7 },
+    ],
+    // Blue home run path (vertical)
+    blue: [
+      { x: 6, y: 13 },
+      { x: 7, y: 8 },
+      { x: 7, y: 9 },
+      { x: 7, y: 10 },
+      { x: 7, y: 11 },
+      { x: 7, y: 12 },
+      { x: 7, y: 13 },
+    ],
+  };
 };
 
 // Home positions - the 2x2 squares in each colored corner
@@ -110,30 +128,30 @@ export const getHomePositions = (color: string): Position[] => {
     // Red home area (bottom-left 2x2 square)
     red: [
       { x: 2, y: 10 },
-      { x: 3, y: 10 }, // Top row of red home
-      { x: 2, y: 11 },
-      { x: 3, y: 11 }, // Bottom row of red home
+      { x: 3.5, y: 10 }, // Top row of red home
+      { x: 2, y: 11.5 },
+      { x: 3.5, y: 11.5 }, // Bottom row of red home
     ],
     // Green home area (top-right 2x2 square)
     green: [
       { x: 11, y: 3 },
-      { x: 12, y: 3 }, // Top row of green home
-      { x: 11, y: 4 },
-      { x: 12, y: 4 }, // Bottom row of green home
+      { x: 12.5, y: 3 }, // Top row of green home
+      { x: 11, y: 4.5 },
+      { x: 12.5, y: 4.5 }, // Bottom row of green home
     ],
     // Yellow home area (bottom-right 2x2 square)
     yellow: [
       { x: 11, y: 10 },
-      { x: 12, y: 10 }, // Top row of yellow home
-      { x: 11, y: 11 },
-      { x: 12, y: 11 }, // Bottom row of yellow home
+      { x: 12.5, y: 10 }, // Top row of yellow home
+      { x: 11, y: 11.5 },
+      { x: 12.5, y: 11.5 }, // Bottom row of yellow home
     ],
     // Blue home area (top-left 2x2 square)
     blue: [
       { x: 2, y: 3 },
-      { x: 3, y: 3 }, // Top row of blue home
-      { x: 2, y: 4 },
-      { x: 3, y: 4 }, // Bottom row of blue home
+      { x: 3.5, y: 3 }, // Top row of blue home
+      { x: 2, y: 4.5 },
+      { x: 3.5, y: 4.5 }, // Bottom row of blue home
     ],
   };
   return homes[color as keyof typeof homes] || [];
@@ -287,13 +305,12 @@ export const getTokensAtPosition = (
 export const canKillToken = (
   attackerToken: Token,
   defenderToken: Token,
-  isKillZoneActive: boolean
 ): boolean => {
   // Can't kill if defender has shield
   if (defenderToken.hasShield) return false;
 
   // Can't kill if on safe position (unless kill zone is active)
-  if (isPositionSafe(defenderToken.position) && !isKillZoneActive) return false;
+  if (isPositionSafe(defenderToken.position)) return false;
 
   // Different players (unless kill zone allows team kills)
   return attackerToken.playerId !== defenderToken.playerId;
