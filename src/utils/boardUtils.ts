@@ -1,5 +1,4 @@
-// utils.ts
-import { LeafyGreen } from "lucide-react";
+// utils/boardUtils.ts
 import type { Position, Token, Player, PowerUp } from "../types/game";
 
 export const BOARD_SIZE = 15;
@@ -8,6 +7,7 @@ export const COLORS = ["red", "blue", "green", "yellow"] as const;
 // White grid positions on both sides of home run paths
 export const getWhiteGridPositions = (): Position[] => {
   return [
+    { x: 1, y: 6 },
     { x: 2, y: 6 },
     { x: 3, y: 6 },
     { x: 4, y: 6 },
@@ -28,6 +28,7 @@ export const getWhiteGridPositions = (): Position[] => {
     { x: 6, y: 5 },
     { x: 6, y: 6 },
 
+    { x: 8, y: 1 },
     { x: 8, y: 2 },
     { x: 8, y: 3 },
     { x: 8, y: 4 },
@@ -46,12 +47,14 @@ export const getWhiteGridPositions = (): Position[] => {
     { x: 10, y: 8 },
     { x: 11, y: 8 },
     { x: 12, y: 8 },
+    { x: 13, y: 8 },
 
     { x: 6, y: 8 },
     { x: 6, y: 9 },
     { x: 6, y: 10 },
     { x: 6, y: 11 },
     { x: 6, y: 12 },
+    { x: 6, y: 13 },
 
     { x: 8, y: 8 },
     { x: 8, y: 9 },
@@ -65,45 +68,45 @@ export const getWhiteGridPositions = (): Position[] => {
 // Home run paths - colored according to their respective colors
 export const getHomeRunPositions = () => {
   return {
-    // blue home run path (horizontal)
-    blue: [
-      { x: 1, y: 6 },
+    // Red home run path (going up from bottom)
+    red: [
+      { x: 7, y: 13 },
+      { x: 7, y: 12 },
+      { x: 7, y: 11 },
+      { x: 7, y: 10 },
+      { x: 7, y: 9 },
+      { x: 7, y: 8 },
+      // { x: 7, y: 7 }, // Center finish
+    ],
+    // Blue home run path (going right from left)
+    yellow: [
       { x: 1, y: 7 },
       { x: 2, y: 7 },
       { x: 3, y: 7 },
       { x: 4, y: 7 },
       { x: 5, y: 7 },
       { x: 6, y: 7 },
+      // { x: 7, y: 7 }, // Center finish
     ],
-    // Green home run path (vertical)
+    // Green home run path (going down from top)
     green: [
-      { x: 8, y: 1 },
       { x: 7, y: 1 },
       { x: 7, y: 2 },
       { x: 7, y: 3 },
       { x: 7, y: 4 },
       { x: 7, y: 5 },
       { x: 7, y: 6 },
+      // { x: 7, y: 7 }, // Center finish
     ],
-    // Yellow home run path (horizontal)
-    yellow: [
-      { x: 13, y: 8 },
-      { x: 8, y: 7 },
-      { x: 9, y: 7 },
-      { x: 10, y: 7 },
-      { x: 11, y: 7 },
-      { x: 12, y: 7 },
+    // Yellow home run path (going left from right)
+    blue: [
       { x: 13, y: 7 },
-    ],
-    // red home run path (vertical)
-    red: [
-      { x: 6, y: 13 },
-      { x: 7, y: 8 },
-      { x: 7, y: 9 },
-      { x: 7, y: 10 },
-      { x: 7, y: 11 },
-      { x: 7, y: 12 },
-      { x: 7, y: 13 },
+      { x: 12, y: 7 },
+      { x: 11, y: 7 },
+      { x: 10, y: 7 },
+      { x: 9, y: 7 },
+      { x: 8, y: 7 },
+      // { x: 7, y: 7 }, // Center finish
     ],
   };
 };
@@ -113,56 +116,121 @@ export const getHomePositions = (color: string): Position[] => {
   const homes = {
     red: [
       { x: 2, y: 10 },
-      { x: 3.5, y: 10 }, 
+      { x: 3.5, y: 10 },
       { x: 2, y: 11.5 },
-      { x: 3.5, y: 11.5 }, 
+      { x: 3.5, y: 11.5 },
     ],
     green: [
       { x: 11, y: 3 },
-      { x: 12.5, y: 3 }, 
+      { x: 12.5, y: 3 },
       { x: 11, y: 4.5 },
-      { x: 12.5, y: 4.5 }, 
+      { x: 12.5, y: 4.5 },
     ],
     yellow: [
       { x: 11, y: 10 },
-      { x: 12.5, y: 10 }, // Top row of yellow home
+      { x: 12.5, y: 10 },
       { x: 11, y: 11.5 },
-      { x: 12.5, y: 11.5 }, // Bottom row of yellow home
+      { x: 12.5, y: 11.5 },
     ],
     blue: [
       { x: 2, y: 3 },
-      { x: 3.5, y: 3 }, // Top row of blue home
+      { x: 3.5, y: 3 },
       { x: 2, y: 4.5 },
-      { x: 3.5, y: 4.5 }, // Bottom row of blue home
+      { x: 3.5, y: 4.5 },
     ],
   };
   return homes[color as keyof typeof homes] || [];
 };
 
-// Starting positions - where arrows point (entrance to main track)
+// Main board path positions - following the exact paths from your images
+export const getBoardPositions = (): Position[] => {
+  return [
+    // Red starting area and path (positions 0-12)
+    { x: 6, y: 13 }, // 0 - Red start (bottom arrow)
+    { x: 6, y: 12 }, // 1
+    { x: 6, y: 11 }, // 2
+    { x: 6, y: 10 }, // 3
+    { x: 6, y: 9 }, // 4
+    { x: 6, y: 8 }, // 5
+    { x: 5, y: 8 }, // 6 - Turn left
+    { x: 4, y: 8 }, // 7
+    { x: 3, y: 8 }, // 8
+    { x: 2, y: 8 }, // 9
+    { x: 1, y: 8 }, // 10
+    { x: 1, y: 7 }, // 11 - Turn up
+    { x: 1, y: 6 }, // 12 - Blue start area
+
+    // Green starting area and path (positions 13-25)
+    { x: 1, y: 6 }, // 13 - Blue start (left arrow)
+    { x: 2, y: 6 }, // 14
+    { x: 3, y: 6 }, // 15
+    { x: 4, y: 6 }, // 16
+    { x: 5, y: 6 }, // 17
+    { x: 6, y: 6 }, // 18
+    { x: 6, y: 5 }, // 19 - Turn up
+    { x: 6, y: 4 }, // 20
+    { x: 6, y: 3 }, // 21
+    { x: 6, y: 2 }, // 22
+    { x: 6, y: 1 }, // 23
+    { x: 7, y: 1 }, // 24 - Turn right
+    { x: 8, y: 1 }, // 25 - Green start area
+
+    // Yellow starting area and path (positions 26-38)
+    { x: 8, y: 1 }, // 26 - Green start (top arrow)
+    { x: 8, y: 2 }, // 27
+    { x: 8, y: 3 }, // 28
+    { x: 8, y: 4 }, // 29
+    { x: 8, y: 5 }, // 30
+    { x: 8, y: 6 }, // 31
+    { x: 9, y: 6 }, // 32 - Turn right
+    { x: 10, y: 6 }, // 33
+    { x: 11, y: 6 }, // 34
+    { x: 12, y: 6 }, // 35
+    { x: 13, y: 6 }, // 36
+    { x: 13, y: 7 }, // 37 - Turn down
+    { x: 13, y: 8 }, // 38 - Yellow start area
+
+    // Blue starting area and path (positions 39-51)
+    { x: 13, y: 8 }, // 39 - Yellow start (right arrow)
+    { x: 12, y: 8 }, // 40
+    { x: 11, y: 8 }, // 41
+    { x: 10, y: 8 }, // 42
+    { x: 9, y: 8 }, // 43
+    { x: 8, y: 8 }, // 44
+    { x: 8, y: 9 }, // 45 - Turn down
+    { x: 8, y: 10 }, // 46
+    { x: 8, y: 11 }, // 47
+    { x: 8, y: 12 }, // 48
+    { x: 8, y: 13 }, // 49
+    { x: 7, y: 13 }, // 50 - Turn left
+    { x: 6, y: 13 }, // 51 - Back to red start (completes loop)
+  ];
+};
+
+// Starting positions - where each color starts their journey
 export const getStartPosition = (color: string): number => {
   const starts = {
-    red: 0, // Red arrow at position 0
-    green: 13, // Green arrow at position 13
-    yellow: 26, // Yellow arrow at position 26
-    blue: 39, // Blue arrow at position 39
+    red: 0, // Red starts at position 0 (bottom)
+    blue: 13, // Blue starts at position 13 (left)
+    green: 26, // Green starts at position 26 (top)
+    yellow: 39, // Yellow starts at position 39 (right)
   };
   return starts[color as keyof typeof starts] || 0;
 };
 
-// Home run entrance positions
+// Home run entrance positions - where tokens enter their home run
 export const getHomeRunStart = (color: string): number => {
   const homeRuns = {
-    red: 51, // Red enters home run after completing lap
-    green: 12, // Green enters home run after position 12
-    yellow: 38, // Yellow enters home run after position 38
-    blue: 51, // Blue enters home run after position 51
+    red: 51, // Red enters home run after completing the loop
+    blue: 12, // Blue enters home run at position 12
+    green: 25, // Green enters home run at position 25
+    yellow: 38, // Yellow enters home run at position 38
   };
   return homeRuns[color as keyof typeof homeRuns] || 51;
 };
 
 // Safe positions (traditionally marked with stars)
-export const SAFE_POSITIONS = [7, 14, 21, 27, 34, 40, 47];
+export const SAFE_POSITIONS = [1, 9, 14, 22, 27, 35, 40, 48];
 
 // Power-up positions
 export const POWER_UP_POSITIONS = [5, 17, 31, 43];
@@ -182,8 +250,8 @@ export const canTokenMove = (
 
   // Check if move would exceed home run
   if (token.isInHomeRun) {
-    const homeRunPosition = token.position - 53; // Home runs start at 53
-    return homeRunPosition + diceValue <= 5;
+    const homeRunPosition = token.position - 56;
+    return homeRunPosition + diceValue <= 6; // 7 positions in home run (0-6)
   }
 
   return true;
@@ -195,36 +263,37 @@ export const calculateNewPosition = (
   playerColor: string
 ): number => {
   if (token.position === -1) {
+    // Token leaving home
     return getStartPosition(playerColor);
   }
 
   if (token.isInHomeRun) {
+    // Token moving in home run
     return token.position + diceValue;
   }
 
   const homeRunStart = getHomeRunStart(playerColor);
   let newPos = token.position + diceValue;
 
-  // Handle wrapping around the main track (53 positions: 0-52)
-  if (newPos > 52) {
-    newPos = newPos - 53; // Wrap around
+  // Handle wrapping around the main track (52 positions: 0-51)
+  if (newPos > 51) {
+    newPos = newPos - 52; // Wrap around
   }
 
   // Check if entering home run
-  if (token.position <= homeRunStart && newPos > homeRunStart) {
-    const excess = newPos - homeRunStart - 1;
-    const homeRunStartPos =
-      playerColor === "red"
-        ? 53
-        : playerColor === "green"
-        ? 58
-        : playerColor === "yellow"
-        ? 63
-        : 68;
-    return homeRunStartPos + excess;
+  if (token.position <= homeRunStart && newPos >= homeRunStart) {
+    // Enter home run
+    const excess = newPos - homeRunStart;
+    return 56 + excess; // Home run starts at position 56
   }
 
   return newPos;
+};
+
+// Helper function to get board position for rendering
+export const getBoardPosition = (boardPosition: number): Position => {
+  const boardPositions = getBoardPositions();
+  return boardPositions[boardPosition] || { x: 7, y: 7 };
 };
 
 export const isPositionSafe = (position: number): boolean => {
@@ -286,15 +355,10 @@ export const getTokensAtPosition = (
 
 export const canKillToken = (
   attackerToken: Token,
-  defenderToken: Token,
+  defenderToken: Token
 ): boolean => {
-  // Can't kill if defender has shield
   if (defenderToken.hasShield) return false;
-
-  // Can't kill if on safe position (unless kill zone is active)
   if (isPositionSafe(defenderToken.position)) return false;
-
-  // Different players (unless kill zone allows team kills)
   return attackerToken.playerId !== defenderToken.playerId;
 };
 

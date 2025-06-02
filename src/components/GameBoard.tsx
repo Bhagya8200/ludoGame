@@ -4,10 +4,11 @@ import {
   canTokenMove,
   getHomePositions,
   getWhiteGridPositions,
-  getHomeRunPositions, // Import the new home run function
+  getHomeRunPositions,
+  getBoardPosition, // Import the new function
 } from "../utils/boardUtils";
 import { BoardCell } from "./BoardCell";
-import { TokenComponent } from "./Token"; // Import the Token component
+import { TokenComponent } from "./Token";
 
 export const GameBoard: React.FC<{
   gameState: GameState;
@@ -41,8 +42,7 @@ export const GameBoard: React.FC<{
             position = { x: 7, y: 7 }; // fallback to center
           }
         } else {
-          // Token on main board - you'll need to implement getBoardPosition
-          // For now, using a simple calculation - you should replace this with proper board positioning
+          // Token on main board - use the proper getBoardPosition function
           position = getBoardPosition(token.position);
         }
 
@@ -68,40 +68,10 @@ export const GameBoard: React.FC<{
     return tokens;
   };
 
-  // Helper function to get board position - you'll need to implement this based on your board layout
-  const getBoardPosition = (boardPosition: number): Position => {
-    // This is a simplified version - you should implement proper board positioning
-    // based on your actual board layout. For now, returning a simple grid position.
-
-    // Example board positions (you'll need to adjust these based on your actual board)
-    const boardPositions: Position[] = [
-      // Starting positions for each color (you'll need to define all 52 positions)
-      { x: 6, y: 1 }, // position 0
-      { x: 6, y: 2 }, // position 1
-      { x: 6, y: 3 }, // position 2
-      { x: 6, y: 4 }, // position 3
-      { x: 6, y: 5 }, // position 4
-      { x: 6, y: 6 }, // position 5
-      { x: 7, y: 6 }, // position 6
-      { x: 8, y: 6 }, // position 7
-      { x: 9, y: 6 }, // position 8
-      { x: 10, y: 6 }, // position 9
-      { x: 11, y: 6 }, // position 10
-      { x: 12, y: 6 }, // position 11
-      { x: 13, y: 6 }, // position 12
-      { x: 13, y: 7 }, // position 13
-      { x: 13, y: 8 }, // position 14
-      // ... continue for all 52 positions
-    ];
-
-    // Return the position if it exists, otherwise return center
-    return boardPositions[boardPosition] || { x: 7, y: 7 };
-  };
-
   const renderBoard = () => {
     const cells: JSX.Element[] = [];
 
-    // Render main board path
+    // Render main board path (52 positions: 0-51)
     for (let i = 0; i < 52; i++) {
       cells.push(
         <BoardCell key={i} position={i} onClick={() => onCellClick(i)} />
@@ -114,20 +84,13 @@ export const GameBoard: React.FC<{
   const renderHomeAreas = () => {
     const areas: JSX.Element[] = [];
 
-    const colorMap = {
-      red: "red",
-      blue: "blue",
-      green: "green",
-      yellow: "yellow",
-    };
-
     ["red", "blue", "green", "yellow"].forEach((color) => {
       const homePositions = getHomePositions(color);
       homePositions.forEach((pos, index) => {
         areas.push(
           <div
             key={`${color}-home-${index}`}
-            className={`absolute w-15 h-15 border-3 bg-gradient-to-br shadow-lg rounded-lg -m-5 `}
+            className="absolute w-15 h-15 border-3 bg-gradient-to-br shadow-lg rounded-lg -m-5"
             style={{
               left: `${pos.x * 40}px`,
               top: `${pos.y * 40}px`,
@@ -143,7 +106,7 @@ export const GameBoard: React.FC<{
     return areas;
   };
 
-  // NEW FUNCTION: Render white/grey grid positions
+  // Render white/grey grid positions
   const renderWhiteGrids = () => {
     const grids: JSX.Element[] = [];
     const whitePositions = getWhiteGridPositions();
@@ -167,7 +130,7 @@ export const GameBoard: React.FC<{
     return grids;
   };
 
-  // NEW FUNCTION: Render colored home run paths
+  // Render colored home run paths
   const renderHomeRunPaths = () => {
     const paths: JSX.Element[] = [];
     const homeRunPositions = getHomeRunPositions();
@@ -214,7 +177,7 @@ export const GameBoard: React.FC<{
             {/* Add an arrow or indicator to show direction */}
             <div className="text-white text-lg font-bold">
               {(() => {
-                if (index >= 1) {
+                if (index >= 0) {
                   switch (color) {
                     case "red":
                       return "↑";
@@ -228,6 +191,7 @@ export const GameBoard: React.FC<{
                       return "";
                   }
                 }
+                return "";
               })()}
             </div>
 
@@ -262,25 +226,8 @@ export const GameBoard: React.FC<{
       {renderBoard()}
       {renderHomeAreas()}
 
-      {/* RENDER TOKENS - This was missing the actual rendering! */}
+      {/* RENDER TOKENS */}
       {renderTokens()}
-
-      {/* Center area - Enhanced design */}
-      {/* <div
-        className="absolute bg-gradient-to-br from-yellow-300 via-orange-300 to-red-300 border-8 border-yellow-700 rounded-2xl shadow-2xl flex items-center justify-center"
-        style={{
-          left: "-10px",
-          bottom: "530px",
-          width: "100px",
-          height: "100px",
-        }}
-      >
-        <div className="text-center">
-          <div className="text-3xl font-bold text-yellow-900 mb-1">🎲</div>
-          <div className="text-lg font-bold text-yellow-800">LUDO</div>
-        </div>
-        <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
-      </div> */}
     </div>
   );
 };

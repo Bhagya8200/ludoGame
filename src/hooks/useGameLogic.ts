@@ -91,7 +91,7 @@ export const useGame = (socket: Socket | null) => {
 
     socket.on('turnSkipped', (playerId: string) => {
       setNotification('Turn skipped due to timeout');
-      setTimeout(() => setNotification(''), 3000);
+      setTimeout(() => setNotification(''), 5000);
     });
 
     socket.on('powerUpSpawned', (powerUp: PowerUp) => {
