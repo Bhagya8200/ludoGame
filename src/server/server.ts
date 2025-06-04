@@ -359,44 +359,43 @@ io.on("connection", (socket) => {
         }
       }
 
-      // IMPORTANT: Check for reconnection FIRST before checking if game started
+      // Check for existing disconnected player with same name
       const existingPlayer = room.players.find((p) => p.name === playerName);
-
       if (existingPlayer) {
-        // Player is reconnecting - update their socket ID and player ID
-        existingPlayer.id = socket.id; // Update player ID to current socket
+        // Reconnecting player
+        existingPlayer.id = socket.id;
         existingPlayer.socketId = socket.id;
+        existingPlayer.isDisconnected = false;
         existingPlayer.lastSeen = new Date();
 
-        // Update token playerIds to match new socket ID
+        // Update token playerIds
         existingPlayer.tokens.forEach((token) => {
           token.playerId = socket.id;
         });
 
         await room.save();
-
         playerSockets.set(socket.id, roomId);
         socket.join(roomId);
 
-        const gameState = GameService.convertToGameState(room);
-
-        // Send reconnection success with current game state
+        // Send full game state to reconnecting player (including their own data)
+        const gameStateForPlayer = GameService.convertToGameState(room, true);
         socket.emit("reconnected", existingPlayer);
-        socket.emit("gameStateUpdate", gameState);
+        socket.emit("gameStateUpdate", gameStateForPlayer);
 
-        // If game is in progress, restart the move timer
-        if (room.gameStarted && !room.gameEnded) {
-          startMoveTimer(roomId, gameState);
-        }
-
-        // Notify other players about reconnection
+        // Send updated game state to other players (without disconnected players)
+        const gameStateForOthers = GameService.convertToGameState(room, false);
         socket.to(roomId).emit("playerReconnected", existingPlayer);
+        socket.to(roomId).emit("gameStateUpdate", gameStateForOthers);
+
+        if (room.gameStarted && !room.gameEnded) {
+          startMoveTimer(roomId, gameStateForOthers);
+        }
 
         console.log(`Player ${playerName} reconnected to room ${roomId}`);
         return;
       }
 
-      // New player joining - only now check if game already started
+      // New player joining
       if (room.gameStarted && !room.gameEnded) {
         socket.emit(
           "error",
@@ -419,7 +418,7 @@ io.on("connection", (socket) => {
       playerSockets.set(socket.id, roomId);
       socket.join(roomId);
 
-      const gameState = GameService.convertToGameState(room);
+      const gameState = GameService.convertToGameState(room, false);
       const newPlayer = gameState.players.find((p) => p.id === socket.id);
 
       io.to(roomId).emit("playerJoined", newPlayer);
@@ -434,13 +433,11 @@ io.on("connection", (socket) => {
       const room = await GameService.updatePlayerReady(roomId, socket.id);
       if (!room) return;
 
-      const gameState = GameService.convertToGameState(room);
-
+      const gameState = GameService.convertToGameState(room, false);
       if (room.gameStarted) {
         startMoveTimer(roomId, gameState);
         io.to(roomId).emit("gameStarted");
       }
-
       io.to(roomId).emit("gameStateUpdate", gameState);
     } catch (error) {
       console.error("Error updating player ready:", error);
@@ -488,19 +485,16 @@ io.on("connection", (socket) => {
   socket.on("moveToken", async (roomId: string, tokenId: string) => {
     try {
       clearMoveTimer(roomId);
-
       const result = await moveTokenWithLogic(roomId, socket.id, tokenId);
       if (!result) {
         socket.emit("error", "Invalid move");
         return;
       }
 
-      // Get updated room state
       const room = await GameService.getRoomById(roomId);
       if (!room) return;
 
-      const gameState = GameService.convertToGameState(room);
-
+      const gameState = GameService.convertToGameState(room, false);
       io.to(roomId).emit("tokenMoved", result);
       io.to(roomId).emit("gameStateUpdate", gameState);
 
@@ -558,33 +552,45 @@ io.on("connection", (socket) => {
   socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
     const roomId = playerSockets.get(socket.id);
-
     if (roomId) {
       try {
         const room = await GameService.getRoomById(roomId);
         if (room) {
           const player = room.players.find((p) => p.socketId === socket.id);
           if (player) {
-            // Mark player as disconnected but don't remove them
-            player.lastSeen = new Date();
-            await room.save();
+            // Mark player as disconnected instead of removing
+            await GameService.setPlayerDisconnected(roomId, player.id);
 
-            // Notify other players about disconnection
-            socket.to(roomId).emit("playerDisconnected", player.id);
+            // Adjust current player if needed
+            await GameService.adjustCurrentPlayerIndex(roomId);
 
-            // Only clear move timer if the disconnected player was the current player
-            const gameState = GameService.convertToGameState(room);
-            const currentPlayer =
-              gameState.players[gameState.currentPlayerIndex];
-            if (currentPlayer.id === player.id) {
-              clearMoveTimer(roomId);
+            const updatedRoom = await GameService.getRoomById(roomId);
+            if (updatedRoom) {
+              // Send game state without disconnected players to other clients
+              const gameStateForOthers = GameService.convertToGameState(
+                updatedRoom,
+                false
+              );
+              socket.to(roomId).emit("playerDisconnected", player.id);
+              socket.to(roomId).emit("gameStateUpdate", gameStateForOthers);
+
+              // Clear move timer if it was disconnected player's turn
+              const currentPlayer =
+                gameStateForOthers.players[updatedRoom.currentPlayerIndex];
+              if (
+                currentPlayer &&
+                updatedRoom.gameStarted &&
+                !updatedRoom.gameEnded
+              ) {
+                clearMoveTimer(roomId);
+                startMoveTimer(roomId, gameStateForOthers);
+              }
             }
           }
         }
       } catch (error) {
         console.error("Error handling disconnect:", error);
       }
-
       playerSockets.delete(socket.id);
     }
   });

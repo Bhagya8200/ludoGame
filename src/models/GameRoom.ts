@@ -23,6 +23,7 @@ export interface IPlayer extends Document {
   moveTimeLeft: number;
   socketId?: string;
   lastSeen: Date;
+  isDisconnected: boolean; // Add this field
 }
 
 export interface IPowerUp extends Document {
@@ -98,6 +99,7 @@ const PlayerSchema = new Schema<IPlayer>({
   moveTimeLeft: { type: Number, default: 0 },
   socketId: { type: String },
   lastSeen: { type: Date, default: Date.now },
+  isDisconnected: { type: Boolean, default: false }, // Add this field
 });
 
 const PowerUpSchema = new Schema<IPowerUp>({

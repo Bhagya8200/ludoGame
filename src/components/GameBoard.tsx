@@ -90,7 +90,7 @@ export const GameBoard: React.FC<{
         areas.push(
           <div
             key={`${color}-home-${index}`}
-            className="absolute w-15 h-15 border-3 bg-gradient-to-br shadow-lg rounded-lg -m-5"
+            className="absolute w-11 h-11 border-3 bg-gradient-to-br shadow-lg rounded-lg "
             style={{
               left: `${pos.x * 40}px`,
               top: `${pos.y * 40}px`,

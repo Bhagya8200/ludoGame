@@ -330,6 +330,51 @@ export class GameService {
     }
   }
 
+  static async setPlayerDisconnected(
+    roomId: string,
+    playerId: string
+  ): Promise<IGameRoom | null> {
+    try {
+      const room = await GameRoom.findOne({ roomId });
+      if (!room) return null;
+
+      const player = room.players.find((p) => p.id === playerId);
+      if (player) {
+        player.isDisconnected = true;
+        player.lastSeen = new Date();
+        await room.save();
+      }
+      return room;
+    } catch (error) {
+      console.error("Error setting player disconnected:", error);
+      return null;
+    }
+  }
+
+  // Add this method to handle player reconnection
+  static async setPlayerReconnected(
+    roomId: string,
+    playerId: string,
+    socketId: string
+  ): Promise<IGameRoom | null> {
+    try {
+      const room = await GameRoom.findOne({ roomId });
+      if (!room) return null;
+
+      const player = room.players.find((p) => p.id === playerId);
+      if (player) {
+        player.isDisconnected = false;
+        player.socketId = socketId;
+        player.lastSeen = new Date();
+        await room.save();
+      }
+      return room;
+    } catch (error) {
+      console.error("Error setting player reconnected:", error);
+      return null;
+    }
+  }
+
   static async setCanRollDice(
     roomId: string,
     canRoll: boolean
@@ -401,6 +446,43 @@ export class GameService {
     }
   }
 
+  static async adjustCurrentPlayerIndex(
+    roomId: string
+  ): Promise<IGameRoom | null> {
+    try {
+      const room = await GameRoom.findOne({ roomId });
+      if (!room) return null;
+
+      const activePlayers = room.players.filter((p) => !p.isDisconnected);
+      if (activePlayers.length === 0) return room;
+
+      // If current player is disconnected, move to next active player
+      const currentPlayer = room.players[room.currentPlayerIndex];
+      if (currentPlayer && currentPlayer.isDisconnected) {
+        // Find next active player
+        let nextIndex = (room.currentPlayerIndex + 1) % room.players.length;
+        let attempts = 0;
+
+        while (attempts < room.players.length) {
+          const nextPlayer = room.players[nextIndex];
+          if (nextPlayer && !nextPlayer.isDisconnected) {
+            room.currentPlayerIndex = nextIndex;
+            break;
+          }
+          nextIndex = (nextIndex + 1) % room.players.length;
+          attempts++;
+        }
+
+        await room.save();
+      }
+
+      return room;
+    } catch (error) {
+      console.error("Error adjusting current player index:", error);
+      return null;
+    }
+  }
+
   static async recordMove(
     roomId: string,
     move: {
@@ -416,9 +498,14 @@ export class GameService {
     }
   ): Promise<IGameRoom | null> {
     try {
+      const gameMove: IGameMove = {
+        ...move,
+        timestamp: new Date(),
+      } as IGameMove;
+
       return await GameRoom.findOneAndUpdate(
         { roomId },
-        { $push: { moves: { ...move, timestamp: new Date() } } },
+        { $push: { moves: gameMove } },
         { new: true }
       ).exec();
     } catch (error) {
@@ -427,10 +514,17 @@ export class GameService {
     }
   }
 
-  static convertToGameState(room: IGameRoom): GameState {
+  static convertToGameState(
+    room: IGameRoom,
+    includeDisconnected: boolean = false
+  ): GameState {
+    const activePlayers = includeDisconnected
+      ? room.players
+      : room.players.filter((p) => !p.isDisconnected);
+
     return {
       id: room.roomId,
-      players: room.players.map((p) => ({
+      players: activePlayers.map((p) => ({
         id: p.id,
         name: p.name,
         color: p.color,
@@ -449,6 +543,7 @@ export class GameService {
         points: p.points,
         isReady: p.isReady,
         moveTimeLeft: p.moveTimeLeft,
+        isDisconnected: p.isDisconnected || false,
       })),
       currentPlayerIndex: room.currentPlayerIndex,
       diceValue: room.diceValue,
