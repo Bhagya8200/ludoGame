@@ -1,4 +1,3 @@
-// server.ts
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -26,6 +25,9 @@ import {
   TRAP_POSITIONS,
   isPositionSafe,
 } from "../utils/boardUtils";
+import { connectToDatabase } from "../database/connection";
+import { GameService } from "../services/gameService";
+import { GameRoom } from "../models/GameRoom";
 
 function hasValidMoves(
   player: Player,
@@ -47,10 +49,15 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// Game state storage
-const games = new Map<string, GameState>();
-const gameSettings = new Map<string, GameSettings>();
-const playerSockets = new Map<string, string>(); // playerId -> socketId
+// Connect to MongoDB
+connectToDatabase().catch(console.error);
+
+// Clean up old rooms periodically
+setInterval(() => {
+  GameService.cleanupOldRooms().catch(console.error);
+}, 3600000); // Every hour
+
+const playerSockets = new Map<string, string>(); // playerId -> roomId
 const moveTimers = new Map<string, NodeJS.Timeout>();
 
 // Default game settings
@@ -61,32 +68,6 @@ const defaultSettings: GameSettings = {
   trapZonesEnabled: true,
   pointsSystemEnabled: true,
 };
-
-function createNewGame(roomId: string): GameState {
-  const game: GameState = {
-    id: roomId,
-    players: [],
-    currentPlayerIndex: 0,
-    diceValue: 0,
-    canRollDice: false,
-    gameStarted: false,
-    gameEnded: false,
-    winner: null,
-    turnCount: 0,
-    powerUps: [],
-    trapZones: TRAP_POSITIONS,
-    lastRollTime: Date.now(),
-  };
-
-  // Initialize power-ups
-  if (defaultSettings.powerUpsEnabled) {
-    for (let i = 0; i < 3; i++) {
-      game.powerUps.push(generatePowerUp());
-    }
-  }
-
-  return game;
-}
 
 function updateTokenEffects(player: Player) {
   player.tokens.forEach((token) => {
@@ -106,425 +87,532 @@ function updateTokenEffects(player: Player) {
   });
 }
 
-function startMoveTimer(game: GameState) {
-  const settings = gameSettings.get(game.id) || defaultSettings;
-  if (!settings.timedMoves) return;
+function startMoveTimer(roomId: string, gameState: GameState) {
+  // Clear existing timer
+  clearMoveTimer(roomId);
 
-  const currentPlayer = game.players[game.currentPlayerIndex];
-  currentPlayer.moveTimeLeft = settings.moveTimeLimit;
+  if (!gameState.gameStarted || gameState.gameEnded) return;
 
-  const timer = setInterval(() => {
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  currentPlayer.moveTimeLeft = defaultSettings.moveTimeLimit;
+
+  const timer = setInterval(async () => {
     currentPlayer.moveTimeLeft--;
 
     if (currentPlayer.moveTimeLeft <= 3 && currentPlayer.moveTimeLeft > 0) {
-      io.to(game.id).emit("timeWarning", currentPlayer.moveTimeLeft);
+      io.to(roomId).emit("timeWarning", currentPlayer.moveTimeLeft);
     }
 
     if (currentPlayer.moveTimeLeft <= 0) {
       clearInterval(timer);
-      moveTimers.delete(game.id);
+      moveTimers.delete(roomId);
 
-      // Skip turn
-      nextTurn(game);
-      io.to(game.id).emit("turnSkipped", currentPlayer.id);
-      io.to(game.id).emit("gameStateUpdate", game);
+      try {
+        // Skip turn in database
+        const room = await GameService.nextTurn(roomId);
+        if (room) {
+          const updatedGameState = GameService.convertToGameState(room);
+          io.to(roomId).emit("turnSkipped", currentPlayer.id);
+          io.to(roomId).emit("gameStateUpdate", updatedGameState);
+
+          // Start timer for next player
+          startMoveTimer(roomId, updatedGameState);
+        }
+      } catch (error) {
+        console.error("Error skipping turn:", error);
+      }
     }
   }, 1000);
 
-  moveTimers.set(game.id, timer);
+  moveTimers.set(roomId, timer);
 }
 
-function clearMoveTimer(gameId: string) {
-  const timer = moveTimers.get(gameId);
+function clearMoveTimer(roomId: string) {
+  const timer = moveTimers.get(roomId);
   if (timer) {
     clearTimeout(timer);
-    moveTimers.delete(gameId);
+    moveTimers.delete(roomId);
   }
 }
 
-function nextTurn(game: GameState) {
-  clearMoveTimer(game.id);
-
-  // Update token effects for current player
-  updateTokenEffects(game.players[game.currentPlayerIndex]);
-
-  game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
-  game.canRollDice = true;
-  game.diceValue = 0;
-  game.turnCount++;
-
-  // Start timer for next player
-  startMoveTimer(game);
+async function nextTurn(roomId: string): Promise<void> {
+  try {
+    const room = await GameService.nextTurn(roomId);
+    if (room) {
+      const gameState = GameService.convertToGameState(room);
+      startMoveTimer(roomId, gameState);
+      io.to(roomId).emit("gameStateUpdate", gameState);
+    }
+  } catch (error) {
+    console.error("Error in nextTurn:", error);
+  }
 }
 
-// server.ts - Updated moveToken function with proper logic
-function moveToken(
-  game: GameState,
+// Enhanced moveToken function with full game logic
+async function moveTokenWithLogic(
+  roomId: string,
   playerId: string,
   tokenId: string
-): MoveResult {
-  const player = game.players.find((p) => p.id === playerId);
-  if (!player)
-    return { success: false, pointsEarned: 0, message: "Player not found" };
+): Promise<MoveResult | null> {
+  try {
+    // First get the current room state
+    const room = await GameService.getRoomById(roomId);
+    if (!room) return null;
 
-  const token = player.tokens.find((t) => t.id === tokenId);
-  if (!token)
-    return { success: false, pointsEarned: 0, message: "Token not found" };
+    const gameState = GameService.convertToGameState(room);
+    const player = gameState.players.find((p) => p.id === playerId);
+    if (!player) return null;
 
-  if (!canTokenMove(token, game.diceValue, game)) {
-    return { success: false, pointsEarned: 0, message: "Token cannot move" };
-  }
+    const token = player.tokens.find((t) => t.id === tokenId);
+    if (!token) return null;
 
-  const oldPosition = token.position;
-  const newPosition = calculateNewPosition(token, game.diceValue, player.color);
-
-  // Check if entering home run (position >= 56 means home run)
-  if (newPosition >= 56 && !token.isInHomeRun) {
-    token.isInHomeRun = true;
-  }
-
-  token.position = newPosition;
-
-  // Check if finished (home run position 62 = 56 + 6, the final spot)
-  if (token.isInHomeRun && newPosition >= 62) {
-    token.isFinished = true;
-    player.points += calculatePoints("finish_token");
-
-    // Check win condition
-    if (checkWinCondition(player)) {
-      game.gameEnded = true;
-      game.winner = player.id;
-    }
-  }
-
-  let result: MoveResult = { success: true, pointsEarned: 0 };
-
-  // Only check for interactions on main board (not in home run)
-  if (!token.isInHomeRun) {
-    // 1. CHECK FOR TOKEN KILLING FIRST
-    const tokensAtPosition = getTokensAtPosition(game.players, newPosition);
-    const otherTokens = tokensAtPosition.filter((t) => t.playerId !== playerId);
-
-    if (otherTokens.length > 0 && !isPositionSafe(newPosition)) {
-      // Kill other tokens at this position (if not protected)
-      otherTokens.forEach((otherToken) => {
-        if (canKillToken(token, otherToken)) {
-          // Send token back to home
-          otherToken.position = -1;
-          otherToken.isInHomeRun = false;
-          otherToken.isFinished = false;
-
-          // Award points
-          player.points += calculatePoints("kill");
-          const killedPlayer = game.players.find(
-            (p) => p.id === otherToken.playerId
-          );
-          if (killedPlayer) {
-            killedPlayer.points += calculatePoints("get_killed");
-          }
-
-          result.killedToken = otherToken;
-          result.message = `Token killed!`;
-        }
-      });
+    if (!canTokenMove(token, gameState.diceValue, gameState)) {
+      return { success: false, pointsEarned: 0, message: "Token cannot move" };
     }
 
-    // 2. CHECK FOR POWER-UPS
-    const powerUp = game.powerUps.find(
-      (p) => p.position === newPosition && p.isActive
+    const oldPosition = token.position;
+    const newPosition = calculateNewPosition(
+      token,
+      gameState.diceValue,
+      player.color
     );
-    if (powerUp) {
-      powerUp.isActive = false;
-      result.powerUpActivated = powerUp;
 
-      // Apply power-up effect
-      switch (powerUp.type) {
-        case "shield":
-          token.hasShield = true;
-          token.shieldTurns = 2;
-          result.message = `Shield activated! Token protected for 2 turns.`;
-          break;
-        case "speed":
-          // Speed boost - move additional spaces
-          const speedBoost = 2;
-          const speedNewPosition = calculateNewPosition(
-            token,
-            speedBoost,
-            player.color
-          );
-          if (!token.isInHomeRun || speedNewPosition <= 62) {
-            token.position = speedNewPosition;
-            if (speedNewPosition >= 56 && !token.isInHomeRun) {
-              token.isInHomeRun = true;
+    if (newPosition >= 56 && !token.isInHomeRun) {
+      token.isInHomeRun = true;
+    }
+
+    token.position = newPosition;
+
+    if (token.isInHomeRun && newPosition >= 62) {
+      token.isFinished = true;
+      player.points += calculatePoints("finish_token");
+
+      if (checkWinCondition(player)) {
+        gameState.gameEnded = true;
+        gameState.winner = player.id;
+      }
+    }
+
+    let result: MoveResult = { success: true, pointsEarned: 0 };
+
+    if (!token.isInHomeRun) {
+      const tokensAtPosition = getTokensAtPosition(
+        gameState.players,
+        newPosition
+      );
+      const otherTokens = tokensAtPosition.filter(
+        (t) => t.playerId !== playerId
+      );
+
+      if (otherTokens.length > 0 && !isPositionSafe(newPosition)) {
+        for (const otherToken of otherTokens) {
+          if (canKillToken(token, otherToken)) {
+            otherToken.position = -1;
+            otherToken.isInHomeRun = false;
+            otherToken.isFinished = false;
+
+            // FIX: Increment kill counter for the attacking player
+            player.kills += 1;
+            player.points += calculatePoints("kill");
+
+            const killedPlayer = gameState.players.find(
+              (p) => p.id === otherToken.playerId
+            );
+            if (killedPlayer) {
+              killedPlayer.points += calculatePoints("get_killed");
             }
-            result.message = `Speed boost! Moved ${speedBoost} extra spaces.`;
+
+            result.killedToken = otherToken;
+            result.message = `Token killed!`;
+
+            // Record the move with kill information
+            await GameService.recordMove(roomId, {
+              playerId,
+              tokenId,
+              fromPosition: oldPosition,
+              toPosition: newPosition,
+              diceValue: gameState.diceValue,
+              moveType: "kill",
+              pointsEarned: calculatePoints("kill"),
+              killedTokenId: otherToken.id,
+            });
           }
-          break;
-        case "teleport":
-          // For teleport, we'll need UI interaction, so just mark it
-          result.message = `Teleport power-up collected! Use it to move to any position.`;
-          break;
-        case "swap":
-          // For swap, we'll need UI interaction, so just mark it
-          result.message = `Swap power-up collected! Use it to swap positions with another token.`;
-          break;
+        }
       }
 
-      // Spawn new power-up after delay
-      setTimeout(() => {
-        if (games.has(game.id)) {
-          const newPowerUp = generatePowerUp();
-          game.powerUps.push(newPowerUp);
-          io.to(game.id).emit("powerUpSpawned", newPowerUp);
+      // Power-up logic
+      const powerUp = gameState.powerUps.find(
+        (p) => p.position === newPosition && p.isActive
+      );
+      if (powerUp) {
+        powerUp.isActive = false;
+        result.powerUpActivated = powerUp;
+
+        switch (powerUp.type) {
+          case "shield":
+            token.hasShield = true;
+            token.shieldTurns = 2;
+            result.message = `Shield activated! Token protected for 2 turns.`;
+            break;
+          case "speed":
+            const speedBoost = 2;
+            const speedNewPosition = calculateNewPosition(
+              token,
+              speedBoost,
+              player.color
+            );
+            if (!token.isInHomeRun || speedNewPosition <= 62) {
+              token.position = speedNewPosition;
+              if (speedNewPosition >= 56 && !token.isInHomeRun) {
+                token.isInHomeRun = true;
+              }
+              result.message = `Speed boost! Moved ${speedBoost} extra spaces.`;
+            }
+            break;
+          case "teleport":
+            result.message = `Teleport power-up collected! Use it to move to any position.`;
+            break;
+          case "swap":
+            result.message = `Swap power-up collected! Use it to swap positions with another token.`;
+            break;
         }
-      }, 5000);
-    }
 
-    // 3. CHECK FOR TRAP ZONES
-    if (isTrapPosition(newPosition) && !token.hasShield) {
-      const trapEffect = Math.random() < 0.5 ? "back" : "freeze";
+        // Spawn new power-up after delay
+        setTimeout(async () => {
+          try {
+            const currentRoom = await GameService.getRoomById(roomId);
+            if (currentRoom) {
+              const newPowerUp = generatePowerUp();
+              await GameService.addPowerUp(roomId, newPowerUp);
+              io.to(roomId).emit("powerUpSpawned", newPowerUp);
+            }
+          } catch (error) {
+            console.error("Error spawning new power-up:", error);
+          }
+        }, 5000);
+      }
 
-      if (trapEffect === "back") {
-        const backSteps = 3;
-        let trapNewPosition = token.position - backSteps;
-
-        // Don't go below 0 or into negative positions
-        if (trapNewPosition < 0) {
-          trapNewPosition = 52 + trapNewPosition; // Wrap around
+      // Trap logic
+      if (isTrapPosition(newPosition) && !token.hasShield) {
+        const trapEffect = Math.random() < 0.5 ? "back" : "freeze";
+        if (trapEffect === "back") {
+          const backSteps = 3;
+          let trapNewPosition = token.position - backSteps;
+          if (trapNewPosition < 0) {
+            trapNewPosition = 52 + trapNewPosition;
+          }
+          token.position = trapNewPosition;
+          result.message = `Trap activated! Moved back ${backSteps} steps.`;
+        } else {
+          token.isFrozen = true;
+          token.frozenTurns = 1;
+          result.message = `Trap activated! Token frozen for 1 turn.`;
         }
+      }
 
-        token.position = trapNewPosition;
-        result.message = `Trap activated! Moved back ${backSteps} steps.`;
-      } else {
-        token.isFrozen = true;
-        token.frozenTurns = 1;
-        result.message = `Trap activated! Token frozen for 1 turn.`;
+      if (isPositionSafe(newPosition)) {
+        result.message = result.message || `Token is now on a safe position!`;
       }
     }
 
-    // 4. CHECK FOR SAFE POSITIONS (informational)
-    if (isPositionSafe(newPosition)) {
-      result.message = result.message || `Token is now on a safe position!`;
+    // Check for completing a round
+    if (oldPosition > newPosition && !token.isInHomeRun && oldPosition < 52) {
+      player.points += calculatePoints("complete_round");
+      result.message =
+        result.message || `Completed a round! Bonus points awarded.`;
     }
+
+    result.pointsEarned = player.points;
+
+    // Update the game state in database
+    const updatedRoom = await GameService.updateGameState(roomId, gameState);
+    if (!updatedRoom) return null;
+
+    // Handle turn logic
+    if (gameState.diceValue !== 6) {
+      await nextTurn(roomId);
+    } else {
+      await GameService.setCanRollDice(roomId, true);
+      clearMoveTimer(roomId);
+      const currentGameState = GameService.convertToGameState(updatedRoom);
+      startMoveTimer(roomId, currentGameState);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Error in moveTokenWithLogic:", error);
+    return null;
   }
-
-  // Award points for completing rounds (only on main board)
-  if (oldPosition > newPosition && !token.isInHomeRun && oldPosition < 52) {
-    player.points += calculatePoints("complete_round");
-    result.message =
-      result.message || `Completed a round! Bonus points awarded.`;
-  }
-
-  result.pointsEarned = player.points;
-
-  // Next turn if didn't roll 6
-  if (game.diceValue !== 6) {
-    nextTurn(game);
-  } else {
-    game.canRollDice = true;
-    clearMoveTimer(game.id);
-    startMoveTimer(game);
-  }
-
-  return result;
 }
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("joinRoom", (roomId: string, playerName: string) => {
-    if (!games.has(roomId)) {
-      games.set(roomId, createNewGame(roomId));
-      gameSettings.set(roomId, { ...defaultSettings });
-    }
-
-    const game = games.get(roomId)!;
-
-    if (game.players.length >= 4) {
-      socket.emit("error", "Room is full");
-      return;
-    }
-
-    if (game.gameStarted) {
-      socket.emit("error", "Game already started");
-      return;
-    }
-
-    const color = COLORS[game.players.length];
-    const player = createPlayer(socket.id, playerName, color);
-
-    game.players.push(player);
-    playerSockets.set(player.id, socket.id);
-
-    socket.join(roomId);
-    io.to(roomId).emit("playerJoined", player);
-    io.to(roomId).emit("gameStateUpdate", game);
-  });
-
-  socket.on("playerReady", (roomId: string) => {
-    const game = games.get(roomId);
-    if (!game) return;
-
-    const player = game.players.find((p) => p.id === socket.id);
-    if (!player) return;
-
-    player.isReady = true;
-
-    // Start game if all players ready
-    if (game.players.length >= 1 && game.players.every((p) => p.isReady)) {
-      game.gameStarted = true;
-      game.canRollDice = true;
-      startMoveTimer(game);
-      io.to(roomId).emit("gameStarted");
-    }
-
-    io.to(roomId).emit("gameStateUpdate", game);
-  });
-
-  // Modified rollDice handler
-  socket.on("rollDice", (roomId: string) => {
-    const game = games.get(roomId);
-    if (!game || !game.canRollDice) return;
-
-    const currentPlayer = game.players[game.currentPlayerIndex];
-    if (currentPlayer.id !== socket.id) return;
-
-    game.diceValue = rollDice();
-    game.canRollDice = false;
-    game.lastRollTime = Date.now();
-
-    io.to(roomId).emit(
-      "diceRolled",
-      game.diceValue,
-      currentPlayer.id,
-      currentPlayer
-    );
-
-    // Check if player has any valid moves
-    if (!hasValidMoves(currentPlayer, game.diceValue, game)) {
-      // No valid moves available, auto-skip after 2 seconds
-      setTimeout(() => {
-        // Double-check the game still exists and it's still this player's turn
-        const currentGame = games.get(roomId);
-        if (
-          currentGame &&
-          currentGame.players[currentGame.currentPlayerIndex].id ===
-            currentPlayer.id
-        ) {
-          nextTurn(currentGame);
-          io.to(roomId).emit("turnSkipped", currentPlayer.id);
-          io.to(roomId).emit("gameStateUpdate", currentGame);
+  socket.on("joinRoom", async (roomId: string, playerName: string) => {
+    try {
+      let room = await GameService.getRoomById(roomId);
+      if (!room) {
+        room = await GameService.createOrGetRoom(roomId);
+        if (!room) {
+          socket.emit("error", "Failed to create room");
+          return;
         }
-      }, 2000);
-    }
+      }
 
-    io.to(roomId).emit("gameStateUpdate", game);
+      // IMPORTANT: Check for reconnection FIRST before checking if game started
+      const existingPlayer = room.players.find((p) => p.name === playerName);
+
+      if (existingPlayer) {
+        // Player is reconnecting - update their socket ID and player ID
+        existingPlayer.id = socket.id; // Update player ID to current socket
+        existingPlayer.socketId = socket.id;
+        existingPlayer.lastSeen = new Date();
+
+        // Update token playerIds to match new socket ID
+        existingPlayer.tokens.forEach((token) => {
+          token.playerId = socket.id;
+        });
+
+        await room.save();
+
+        playerSockets.set(socket.id, roomId);
+        socket.join(roomId);
+
+        const gameState = GameService.convertToGameState(room);
+
+        // Send reconnection success with current game state
+        socket.emit("reconnected", existingPlayer);
+        socket.emit("gameStateUpdate", gameState);
+
+        // If game is in progress, restart the move timer
+        if (room.gameStarted && !room.gameEnded) {
+          startMoveTimer(roomId, gameState);
+        }
+
+        // Notify other players about reconnection
+        socket.to(roomId).emit("playerReconnected", existingPlayer);
+
+        console.log(`Player ${playerName} reconnected to room ${roomId}`);
+        return;
+      }
+
+      // New player joining - only now check if game already started
+      if (room.gameStarted && !room.gameEnded) {
+        socket.emit(
+          "error",
+          "Game already started and you are not a previous player"
+        );
+        return;
+      }
+
+      room = await GameService.addPlayerToRoom(
+        roomId,
+        socket.id,
+        playerName,
+        socket.id
+      );
+      if (!room) {
+        socket.emit("error", "Failed to join room");
+        return;
+      }
+
+      playerSockets.set(socket.id, roomId);
+      socket.join(roomId);
+
+      const gameState = GameService.convertToGameState(room);
+      const newPlayer = gameState.players.find((p) => p.id === socket.id);
+
+      io.to(roomId).emit("playerJoined", newPlayer);
+      io.to(roomId).emit("gameStateUpdate", gameState);
+    } catch (error: any) {
+      socket.emit("error", error.message);
+    }
   });
 
-  socket.on("moveToken", (roomId: string, tokenId: string) => {
-    const game = games.get(roomId);
-    if (!game || game.canRollDice) return;
+  socket.on("playerReady", async (roomId: string) => {
+    try {
+      const room = await GameService.updatePlayerReady(roomId, socket.id);
+      if (!room) return;
 
-    const currentPlayer = game.players[game.currentPlayerIndex];
-    if (currentPlayer.id !== socket.id) return;
+      const gameState = GameService.convertToGameState(room);
 
-    // Check if this move is still valid
-    const token = currentPlayer.tokens.find((t) => t.id === tokenId);
-    if (!token || !canTokenMove(token, game.diceValue, game)) {
-      socket.emit("error", "Invalid move");
-      return;
+      if (room.gameStarted) {
+        startMoveTimer(roomId, gameState);
+        io.to(roomId).emit("gameStarted");
+      }
+
+      io.to(roomId).emit("gameStateUpdate", gameState);
+    } catch (error) {
+      console.error("Error updating player ready:", error);
     }
+  });
 
-    const result = moveToken(game, socket.id, tokenId);
+  socket.on("rollDice", async (roomId: string) => {
+    try {
+      const result = await GameService.rollDice(roomId, socket.id);
+      if (!result) return;
 
-    io.to(roomId).emit("tokenMoved", result);
-    io.to(roomId).emit("gameStateUpdate", game);
+      const { room, diceValue } = result;
+      const gameState = GameService.convertToGameState(room);
+      const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-    if (game.gameEnded) {
-      const winner = game.players.find((p) => p.id === game.winner)!;
-      io.to(roomId).emit("gameEnded", winner);
+      io.to(roomId).emit(
+        "diceRolled",
+        diceValue,
+        currentPlayer.id,
+        currentPlayer
+      );
+
+      // Check if player has any valid moves
+      if (!hasValidMoves(currentPlayer, diceValue, gameState)) {
+        // No valid moves available, auto-skip after 2 seconds
+        setTimeout(async () => {
+          try {
+            const currentRoom = await GameService.getRoomById(roomId);
+            if (currentRoom && !currentRoom.canRollDice) {
+              await nextTurn(roomId);
+              io.to(roomId).emit("turnSkipped", currentPlayer.id);
+            }
+          } catch (error) {
+            console.error("Error auto-skipping turn:", error);
+          }
+        }, 2000);
+      }
+
+      io.to(roomId).emit("gameStateUpdate", gameState);
+    } catch (error) {
+      console.error("Error rolling dice:", error);
+    }
+  });
+
+  socket.on("moveToken", async (roomId: string, tokenId: string) => {
+    try {
       clearMoveTimer(roomId);
+
+      const result = await moveTokenWithLogic(roomId, socket.id, tokenId);
+      if (!result) {
+        socket.emit("error", "Invalid move");
+        return;
+      }
+
+      // Get updated room state
+      const room = await GameService.getRoomById(roomId);
+      if (!room) return;
+
+      const gameState = GameService.convertToGameState(room);
+
+      io.to(roomId).emit("tokenMoved", result);
+      io.to(roomId).emit("gameStateUpdate", gameState);
+
+      if (room.gameEnded) {
+        const winner = gameState.players.find((p) => p.id === room.winner)!;
+        io.to(roomId).emit("gameEnded", winner);
+        clearMoveTimer(roomId);
+      }
+    } catch (error) {
+      console.error("Error moving token:", error);
+      socket.emit("error", "Failed to move token");
     }
   });
 
-  socket.on("skipTurn", (roomId: string) => {
-    const game = games.get(roomId);
-    if (!game || game.canRollDice) return;
+  socket.on("skipTurn", async (roomId: string) => {
+    try {
+      const room = await GameService.getRoomById(roomId);
+      if (!room || room.canRollDice) return;
 
-    const currentPlayer = game.players[game.currentPlayerIndex];
-    if (currentPlayer.id !== socket.id) return;
+      const gameState = GameService.convertToGameState(room);
+      const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-    // Only allow manual skip if no valid moves available
-    if (!hasValidMoves(currentPlayer, game.diceValue, game)) {
-      nextTurn(game);
-      io.to(roomId).emit("turnSkipped", currentPlayer.id);
-      io.to(roomId).emit("gameStateUpdate", game);
+      if (currentPlayer.id !== socket.id) return;
+
+      // Only allow manual skip if no valid moves available
+      if (!hasValidMoves(currentPlayer, gameState.diceValue, gameState)) {
+        await nextTurn(roomId);
+        io.to(roomId).emit("turnSkipped", currentPlayer.id);
+      }
+    } catch (error) {
+      console.error("Error skipping turn:", error);
     }
   });
 
   socket.on(
     "usePowerUp",
-    (roomId: string, powerUpType: string, targetData: any) => {
-      const game = games.get(roomId);
-      if (!game) return;
-
-      const player = game.players.find((p) => p.id === socket.id);
-      if (!player) return;
-
-      // Handle teleport and swap power-ups
-      if (powerUpType === "teleport" && targetData.position !== undefined) {
-        const token = player.tokens.find((t) => t.id === targetData.tokenId);
-        if (token && !token.isInHomeRun) {
-          token.position = targetData.position;
-          io.to(roomId).emit("gameStateUpdate", game);
-        }
-      }
-
-      if (powerUpType === "swap" && targetData.targetTokenId) {
-        const playerToken = player.tokens.find(
-          (t) => t.id === targetData.tokenId
+    async (roomId: string, powerUpType: string, targetData: any) => {
+      try {
+        const room = await GameService.usePowerUp(
+          roomId,
+          socket.id,
+          powerUpType,
+          targetData
         );
-        const targetToken = game.players
-          .flatMap((p) => p.tokens)
-          .find((t) => t.id === targetData.targetTokenId);
+        if (!room) return;
 
-        if (
-          playerToken &&
-          targetToken &&
-          !playerToken.isInHomeRun &&
-          !targetToken.isInHomeRun
-        ) {
-          const tempPos = playerToken.position;
-          playerToken.position = targetToken.position;
-          targetToken.position = tempPos;
-          io.to(roomId).emit("gameStateUpdate", game);
-        }
+        const gameState = GameService.convertToGameState(room);
+        io.to(roomId).emit("gameStateUpdate", gameState);
+      } catch (error) {
+        console.error("Error using power-up:", error);
       }
     }
   );
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
+    const roomId = playerSockets.get(socket.id);
 
-    // Find and remove player from games
-    for (const [roomId, game] of games.entries()) {
-      const playerIndex = game.players.findIndex((p) => p.id === socket.id);
-      if (playerIndex !== -1) {
-        game.players.splice(playerIndex, 1);
-        playerSockets.delete(socket.id);
-        clearMoveTimer(roomId);
+    if (roomId) {
+      try {
+        const room = await GameService.getRoomById(roomId);
+        if (room) {
+          const player = room.players.find((p) => p.socketId === socket.id);
+          if (player) {
+            // Mark player as disconnected but don't remove them
+            player.lastSeen = new Date();
+            await room.save();
 
-        if (game.players.length === 0) {
-          games.delete(roomId);
-          gameSettings.delete(roomId);
-        } else {
-          io.to(roomId).emit("playerLeft", socket.id);
-          io.to(roomId).emit("gameStateUpdate", game);
+            // Notify other players about disconnection
+            socket.to(roomId).emit("playerDisconnected", player.id);
+
+            // Only clear move timer if the disconnected player was the current player
+            const gameState = GameService.convertToGameState(room);
+            const currentPlayer =
+              gameState.players[gameState.currentPlayerIndex];
+            if (currentPlayer.id === player.id) {
+              clearMoveTimer(roomId);
+            }
+          }
         }
-        break;
+      } catch (error) {
+        console.error("Error handling disconnect:", error);
       }
+
+      playerSockets.delete(socket.id);
     }
   });
+
+  // This removes players who have been disconnected for more than 5 minutes
+  setInterval(async () => {
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+      const rooms = await GameRoom.find({
+        gameStarted: false, // Only cleanup waiting rooms
+        "players.lastSeen": { $lt: fiveMinutesAgo },
+      });
+
+      for (const room of rooms) {
+        const activePlayers = room.players.filter(
+          (p) => p.lastSeen > fiveMinutesAgo
+        );
+
+        if (activePlayers.length !== room.players.length) {
+          room.players = activePlayers;
+          await room.save();
+        }
+      }
+    } catch (error) {
+      console.error("Error cleaning up disconnected players:", error);
+    }
+  }, 60000); // Run every minute
 });
 
 const PORT = process.env.PORT || 3001;
