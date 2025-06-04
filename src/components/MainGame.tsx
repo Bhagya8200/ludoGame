@@ -1,20 +1,17 @@
-import React, { useState } from "react";
-import {
-  useSocket,
-  useGame,
-  useAudioEffects,
-  usePowerUpSelection,
-} from "../hooks/useGameLogic";
+import React, { useState, useEffect } from "react";
+import { useSocket, useGame, useAudioEffects, usePowerUpSelection } from "../hooks/useGameLogic";
 import { GameBoard } from "./GameBoard";
 import { PlayerInfo } from "./PlayerInfo";
 import { Dice } from "./Dice";
 import { PowerUpDialog } from "./PowerUpDialog";
+import { isPositionSafe, isTrapPosition, isPowerUpPosition } from "../utils/boardUtils";
 
 const LudoGame: React.FC = () => {
   const [roomId, setRoomId] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [isJoined, setIsJoined] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
+  const [gameNotifications, setGameNotifications] = useState<string[]>([]);
 
   const { socket, connected } = useSocket("http://localhost:3001");
   const {
@@ -27,18 +24,44 @@ const LudoGame: React.FC = () => {
     setReady,
     rollDice,
     moveToken,
-    usePowerUp,
+    usePowerUp
   } = useGame(socket);
 
-  const { playDiceRoll, playTokenMove, playKill, playPowerUp } =
-    useAudioEffects();
+  const { playDiceRoll, playTokenMove, playKill, playPowerUp } = useAudioEffects();
   const {
     selectedPowerUp,
     showPowerUpDialog,
     powerUpData,
     selectPowerUp,
-    closePowerUpDialog,
+    closePowerUpDialog
   } = usePowerUpSelection();
+
+  // Add notification when tokens land on special positions
+  useEffect(() => {
+    if (gameState && currentPlayer) {
+      currentPlayer.tokens.forEach(token => {
+        if (token.position >= 0 && token.position < 52) {
+          if (isPositionSafe(token.position)) {
+            addGameNotification(`Your token is safe at position ${token.position}!`);
+          } else if (isTrapPosition(token.position)) {
+            addGameNotification(`Trap activated at position ${token.position}!`);
+          } else if (isPowerUpPosition(token.position)) {
+            const powerUp = gameState.powerUps.find(p => p.position === token.position && p.isActive);
+            if (powerUp) {
+              addGameNotification(`Power-up found: ${powerUp.type}!`);
+            }
+          }
+        }
+      });
+    }
+  }, [gameState?.players, currentPlayer?.tokens]);
+
+  const addGameNotification = (message: string) => {
+    setGameNotifications(prev => [...prev, message]);
+    setTimeout(() => {
+      setGameNotifications(prev => prev.slice(1));
+    }, 3000);
+  };
 
   const handleJoinRoom = () => {
     if (roomId.trim() && playerName.trim()) {
@@ -58,14 +81,78 @@ const LudoGame: React.FC = () => {
 
   const handleTokenClick = (tokenId: string) => {
     if (gameState && currentPlayer) {
-      moveToken(gameState.id, tokenId);
-      playTokenMove();
+      const token = currentPlayer.tokens.find(t => t.id === tokenId);
+      if (token) {
+        // Check if token can move
+        if (token.isFinished) {
+          addGameNotification("This token has already finished!");
+          return;
+        }
+        if (token.isFrozen && token.frozenTurns > 0) {
+          addGameNotification("This token is frozen and cannot move!");
+          return;
+        }
+        if (token.position === -1 && gameState.diceValue !== 6) {
+          addGameNotification("You need a 6 to move this token out of home!");
+          return;
+        }
+
+        moveToken(gameState.id, tokenId);
+        playTokenMove();
+      }
     }
   };
 
   const handleCellClick = (position: number) => {
     if (selectedPowerUp === "teleport") {
-      selectPowerUp("teleport", { position });
+      // Validate teleport position
+      if (position >= 0 && position < 52) {
+        selectPowerUp("teleport", { position });
+      } else {
+        addGameNotification("Invalid teleport position!");
+      }
+    }
+  };
+
+  const handlePowerUpClick = (powerUpType: string, powerUpPosition?: number) => {
+    if (!isCurrentPlayerTurn) {
+      addGameNotification("It's not your turn!");
+      return;
+    }
+
+    // Check if player has a token at the power-up position
+    const playerToken = currentPlayer?.tokens.find(
+      token => token.position === powerUpPosition && !token.isFinished
+    );
+
+    if (!playerToken && powerUpPosition !== undefined) {
+      addGameNotification("You need to have a token at this position to collect the power-up!");
+      return;
+    }
+
+    switch (powerUpType) {
+      case "shield":
+        if (playerToken) {
+          usePowerUp(gameState!.id, "shield", { tokenId: playerToken.id });
+          playPowerUp();
+          addGameNotification("Shield activated! Your token is protected.");
+        }
+        break;
+      case "speed":
+        if (playerToken) {
+          usePowerUp(gameState!.id, "speed", { tokenId: playerToken.id });
+          playPowerUp();
+          addGameNotification("Speed boost activated!");
+        }
+        break;
+      case "teleport":
+        selectPowerUp("teleport", { tokenId: playerToken?.id });
+        break;
+      case "swap":
+        selectPowerUp("swap", { tokenId: playerToken?.id });
+        break;
+      default:
+        addGameNotification("Unknown power-up type!");
     }
   };
 
@@ -83,7 +170,16 @@ const LudoGame: React.FC = () => {
     }
   };
 
-  // Login/Join Room Screen
+  // Helper function to get position description
+  const getPositionDescription = (position: number): string => {
+    if (position < 0) return "Home";
+    if (position >= 56) return "Home Run";
+    if (isPositionSafe(position)) return "Safe Zone";
+    if (isTrapPosition(position)) return "Trap Zone";
+    if (isPowerUpPosition(position)) return "Power-up Zone";
+    return `Position ${position}`;
+  };
+
   if (!isJoined || !gameState) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center p-4">
@@ -145,7 +241,6 @@ const LudoGame: React.FC = () => {
     );
   }
 
-  // Main Game Screen
   const isCurrentPlayerTurn =
     currentPlayer &&
     gameState.players[gameState.currentPlayerIndex]?.id === currentPlayer.id;
@@ -164,6 +259,7 @@ const LudoGame: React.FC = () => {
               {gameState.id}
             </span>
           </div>
+
           {gameState.gameEnded && gameState.winner && (
             <div className="mt-4 p-4 bg-yellow-400 text-yellow-900 rounded-lg font-bold text-xl">
               🎉{" "}
@@ -174,7 +270,7 @@ const LudoGame: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Players Info */}
+          {/* Sidebar */}
           <div className="lg:col-span-1 space-y-4">
             <h2 className="text-xl font-bold text-white mb-4">Players</h2>
             {gameState.players.map((player, index) => (
@@ -244,7 +340,26 @@ const LudoGame: React.FC = () => {
               )}
             </div>
 
-            {/* Power-ups */}
+            {/* Board Legend */}
+            <div className="bg-white p-4 rounded-lg shadow-lg">
+              <h3 className="font-bold text-gray-800 mb-3">Board Legend</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-300 rounded border-2 border-green-500"></div>
+                  <span>Safe Zones (Protected)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-300 rounded border-2 border-red-500"></div>
+                  <span>Trap Zones (Dangerous)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-purple-300 rounded border-2 border-purple-500"></div>
+                  <span>Power-up Zones</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Available Power-ups */}
             {availablePowerUps.length > 0 && (
               <div className="bg-gradient-to-br from-purple-100 to-purple-200 p-4 rounded-xl shadow-lg border-2 border-purple-300">
                 <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
@@ -255,7 +370,7 @@ const LudoGame: React.FC = () => {
                   {availablePowerUps.map((powerUp, index) => (
                     <button
                       key={index}
-                      onClick={() => selectPowerUp(powerUp.type)}
+                      onClick={() => handlePowerUpClick(powerUp.type, powerUp.position)}
                       disabled={!isCurrentPlayerTurn}
                       className={`w-full p-3 rounded-lg border-2 text-left transition-all transform hover:scale-105 ${
                         isCurrentPlayerTurn
@@ -270,10 +385,11 @@ const LudoGame: React.FC = () => {
                             {powerUp.type === "teleport" && "⚡"}
                             {powerUp.type === "swap" && "🔄"}
                             {powerUp.type === "speed" && "🚀"}
-                            {/* {powerUp.type === 'freeze' && '❄️'} */}
                             {powerUp.type}
                           </span>
                           <div className="text-xs text-purple-600 mt-1">
+                            Position: {powerUp.position}
+                            <br />
                             {powerUp.type === "shield" &&
                               "Protect your token from attacks"}
                             {powerUp.type === "teleport" &&
@@ -281,7 +397,6 @@ const LudoGame: React.FC = () => {
                             {powerUp.type === "swap" &&
                               "Exchange positions with opponent"}
                             {powerUp.type === "speed" && "Move extra spaces"}
-                            {/* {powerUp.type === 'freeze' && 'Freeze opponent token'} */}
                           </div>
                         </div>
                         <div className="text-purple-600 text-xl">
@@ -289,10 +404,36 @@ const LudoGame: React.FC = () => {
                           {powerUp.type === "teleport" && "⚡"}
                           {powerUp.type === "swap" && "🔄"}
                           {powerUp.type === "speed" && "🚀"}
-                          {/* {powerUp.type === 'freeze' && '❄️'} */}
                         </div>
                       </div>
                     </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Current Player Token Status */}
+            {currentPlayer && gameState.gameStarted && (
+              <div className="bg-white p-4 rounded-lg shadow-lg">
+                <h3 className="font-bold text-gray-800 mb-3">Your Tokens</h3>
+                <div className="space-y-2 text-sm">
+                  {currentPlayer.tokens.map((token, index) => (
+                    <div key={token.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <span>Token {index + 1}</span>
+                      <div className="text-right">
+                        <div className={`text-xs px-2 py-1 rounded ${
+                          token.isFinished ? 'bg-green-200 text-green-800' :
+                          token.isFrozen ? 'bg-blue-200 text-blue-800' :
+                          token.hasShield ? 'bg-yellow-200 text-yellow-800' :
+                          'bg-gray-200 text-gray-800'
+                        }`}>
+                          {token.isFinished ? 'Finished' :
+                           token.isFrozen ? `Frozen (${token.frozenTurns})` :
+                           token.hasShield ? `Shield (${token.shieldTurns})` :
+                           getPositionDescription(token.position)}
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -311,17 +452,28 @@ const LudoGame: React.FC = () => {
         </div>
 
         {/* Notifications */}
-        {notification && (
-          <div className="fixed top-4 right-4 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-bounce">
-            {notification}
-          </div>
-        )}
-
-        {error && (
-          <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50">
-            {error}
-          </div>
-        )}
+        <div className="fixed top-4 right-4 space-y-2 z-50">
+          {notification && (
+            <div className="bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg animate-bounce">
+              {notification}
+            </div>
+          )}
+          
+          {gameNotifications.map((notif, index) => (
+            <div
+              key={index}
+              className="bg-purple-500 text-white px-6 py-3 rounded-lg shadow-lg animate-slide-in"
+            >
+              {notif}
+            </div>
+          ))}
+          
+          {error && (
+            <div className="bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg">
+              {error}
+            </div>
+          )}
+        </div>
 
         {timeWarning > 0 && (
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white text-6xl font-bold px-8 py-4 rounded-lg shadow-2xl z-50 animate-pulse">
@@ -347,25 +499,19 @@ const LudoGame: React.FC = () => {
               <div className="text-sm">Turns Played</div>
             </div>
             <div>
-              <div className="text-2xl font-bold">
-                {gameState.players.length}
-              </div>
+              <div className="text-2xl font-bold">{gameState.players.length}</div>
               <div className="text-sm">Players</div>
             </div>
             <div>
-              <div className="text-2xl font-bold">
-                {availablePowerUps.length}
-              </div>
+              <div className="text-2xl font-bold">{availablePowerUps.length}</div>
               <div className="text-sm">Power-ups</div>
             </div>
-            {/* <div>
+            <div>
               <div className="text-2xl font-bold">
-                {gameState.isKillZoneActive ? '⚡' : '🛡️'}
+                {gameState.players.reduce((sum, player) => sum + player.points, 0)}
               </div>
-              <div className="text-sm">
-                {gameState.isKillZoneActive ? 'Kill Zone' : 'Safe Zone'}
-              </div>
-            </div> */}
+              <div className="text-sm">Total Points</div>
+            </div>
           </div>
         </div>
       </div>
