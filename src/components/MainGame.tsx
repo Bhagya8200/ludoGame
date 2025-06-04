@@ -1,37 +1,43 @@
 import React, { useState } from "react";
-import { useSocket, useGame, useAudioEffects, usePowerUpSelection } from "../hooks/useGameLogic";
+import {
+  useSocket,
+  useGame,
+  useAudioEffects,
+  usePowerUpSelection,
+} from "../hooks/useGameLogic";
 import { GameBoard } from "./GameBoard";
 import { PlayerInfo } from "./PlayerInfo";
 import { Dice } from "./Dice";
 import { PowerUpDialog } from "./PowerUpDialog";
 
 const LudoGame: React.FC = () => {
-  const [roomId, setRoomId] = useState('');
-  const [playerName, setPlayerName] = useState('');
+  const [roomId, setRoomId] = useState("");
+  const [playerName, setPlayerName] = useState("");
   const [isJoined, setIsJoined] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
 
-  const { socket, connected } = useSocket('http://localhost:3001');
-  const { 
-    gameState, 
-    currentPlayer, 
-    error, 
-    notification, 
-    timeWarning, 
-    joinRoom, 
-    setReady, 
-    rollDice, 
-    moveToken, 
-    usePowerUp 
+  const { socket, connected } = useSocket("http://localhost:3001");
+  const {
+    gameState,
+    currentPlayer,
+    error,
+    notification,
+    timeWarning,
+    joinRoom,
+    setReady,
+    rollDice,
+    moveToken,
+    usePowerUp,
   } = useGame(socket);
-  
-  const { playDiceRoll, playTokenMove, playKill, playPowerUp } = useAudioEffects();
-  const { 
-    selectedPowerUp, 
-    showPowerUpDialog, 
-    powerUpData, 
-    selectPowerUp, 
-    closePowerUpDialog 
+
+  const { playDiceRoll, playTokenMove, playKill, playPowerUp } =
+    useAudioEffects();
+  const {
+    selectedPowerUp,
+    showPowerUpDialog,
+    powerUpData,
+    selectPowerUp,
+    closePowerUpDialog,
   } = usePowerUpSelection();
 
   const handleJoinRoom = () => {
@@ -58,8 +64,8 @@ const LudoGame: React.FC = () => {
   };
 
   const handleCellClick = (position: number) => {
-    if (selectedPowerUp === 'teleport') {
-      selectPowerUp('teleport', { position });
+    if (selectedPowerUp === "teleport") {
+      selectPowerUp("teleport", { position });
     }
   };
 
@@ -82,8 +88,10 @@ const LudoGame: React.FC = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">🎲 Ludo Game</h1>
-          
+          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
+            🎲 Ludo Game
+          </h1>
+
           {!connected && (
             <div className="text-center text-red-500 mb-4">
               Connecting to server...
@@ -114,7 +122,7 @@ const LudoGame: React.FC = () => {
                 onChange={(e) => setPlayerName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter your name"
-                onKeyPress={(e) => e.key === 'Enter' && handleJoinRoom()}
+                onKeyPress={(e) => e.key === "Enter" && handleJoinRoom()}
               />
             </div>
 
@@ -138,9 +146,11 @@ const LudoGame: React.FC = () => {
   }
 
   // Main Game Screen
-  const isCurrentPlayerTurn = currentPlayer && gameState.players[gameState.currentPlayerIndex]?.id === currentPlayer.id;
+  const isCurrentPlayerTurn =
+    currentPlayer &&
+    gameState.players[gameState.currentPlayerIndex]?.id === currentPlayer.id;
   const canShowDice = gameState.gameStarted && isCurrentPlayerTurn;
-  const availablePowerUps = gameState.powerUps.filter(p => p.isActive);
+  const availablePowerUps = gameState.powerUps.filter((p) => p.isActive);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-400 to-blue-500 p-4">
@@ -149,11 +159,16 @@ const LudoGame: React.FC = () => {
         <div className="text-center mb-6">
           <h1 className="text-4xl font-bold text-white mb-2">🎲 Ludo Game</h1>
           <div className="text-white">
-            Room: <span className="font-mono bg-black bg-opacity-20 px-2 py-1 rounded">{gameState.id}</span>
+            Room:{" "}
+            <span className="font-mono bg-black bg-opacity-20 px-2 py-1 rounded">
+              {gameState.id}
+            </span>
           </div>
           {gameState.gameEnded && gameState.winner && (
             <div className="mt-4 p-4 bg-yellow-400 text-yellow-900 rounded-lg font-bold text-xl">
-              🎉 {gameState.players.find(p => p.id === gameState.winner)?.name} Wins! 🎉
+              🎉{" "}
+              {gameState.players.find((p) => p.id === gameState.winner)?.name}{" "}
+              Wins! 🎉
             </div>
           )}
         </div>
@@ -166,8 +181,16 @@ const LudoGame: React.FC = () => {
               <PlayerInfo
                 key={player.id}
                 player={player}
-                isCurrentPlayer={gameState.players[gameState.currentPlayerIndex]?.id === player.id}
-                timeLeft={gameState.players[gameState.currentPlayerIndex]?.id === player.id ? player.moveTimeLeft : undefined}
+                isCurrentPlayer={
+                  gameState.players[gameState.currentPlayerIndex]?.id ===
+                  player.id
+                }
+                timeLeft={
+                  gameState.players[gameState.currentPlayerIndex]?.id ===
+                  player.id
+                    ? player.moveTimeLeft
+                    : undefined
+                }
               />
             ))}
 
@@ -176,7 +199,9 @@ const LudoGame: React.FC = () => {
               {!gameState.gameStarted && (
                 <div className="text-center">
                   <p className="mb-4 text-gray-600">
-                    Waiting for {gameState.players.filter(p => !p.isReady).length} player(s) to ready up...
+                    Waiting for{" "}
+                    {gameState.players.filter((p) => !p.isReady).length}{" "}
+                    player(s) to ready up...
                   </p>
                   {currentPlayer && !currentPlayer.isReady && (
                     <button
@@ -210,7 +235,11 @@ const LudoGame: React.FC = () => {
 
               {gameState.gameStarted && !isCurrentPlayerTurn && (
                 <div className="text-center text-gray-600">
-                  <p>Waiting for {gameState.players[gameState.currentPlayerIndex]?.name}'s turn...</p>
+                  <p>
+                    Waiting for{" "}
+                    {gameState.players[gameState.currentPlayerIndex]?.name}'s
+                    turn...
+                  </p>
                 </div>
               )}
             </div>
@@ -229,34 +258,37 @@ const LudoGame: React.FC = () => {
                       onClick={() => selectPowerUp(powerUp.type)}
                       disabled={!isCurrentPlayerTurn}
                       className={`w-full p-3 rounded-lg border-2 text-left transition-all transform hover:scale-105 ${
-                        isCurrentPlayerTurn 
-                          ? 'bg-gradient-to-r from-purple-200 to-purple-300 hover:from-purple-300 hover:to-purple-400 border-purple-400 shadow-md hover:shadow-lg cursor-pointer'
-                          : 'bg-gray-200 border-gray-300 cursor-not-allowed opacity-60'
+                        isCurrentPlayerTurn
+                          ? "bg-gradient-to-r from-purple-200 to-purple-300 hover:from-purple-300 hover:to-purple-400 border-purple-400 shadow-md hover:shadow-lg cursor-pointer"
+                          : "bg-gray-200 border-gray-300 cursor-not-allowed opacity-60"
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="font-bold text-purple-800 capitalize flex items-center gap-2">
-                            {powerUp.type === 'shield' && '🛡️'}
-                            {powerUp.type === 'teleport' && '⚡'}
-                            {powerUp.type === 'swap' && '🔄'}
-                            {powerUp.type === 'speed' && '🚀'}
+                            {powerUp.type === "shield" && "🛡️"}
+                            {powerUp.type === "teleport" && "⚡"}
+                            {powerUp.type === "swap" && "🔄"}
+                            {powerUp.type === "speed" && "🚀"}
                             {/* {powerUp.type === 'freeze' && '❄️'} */}
                             {powerUp.type}
                           </span>
                           <div className="text-xs text-purple-600 mt-1">
-                            {powerUp.type === 'shield' && 'Protect your token from attacks'}
-                            {powerUp.type === 'teleport' && 'Move to any position instantly'}
-                            {powerUp.type === 'swap' && 'Exchange positions with opponent'}
-                            {powerUp.type === 'speed' && 'Move extra spaces'}
+                            {powerUp.type === "shield" &&
+                              "Protect your token from attacks"}
+                            {powerUp.type === "teleport" &&
+                              "Move to any position instantly"}
+                            {powerUp.type === "swap" &&
+                              "Exchange positions with opponent"}
+                            {powerUp.type === "speed" && "Move extra spaces"}
                             {/* {powerUp.type === 'freeze' && 'Freeze opponent token'} */}
                           </div>
                         </div>
                         <div className="text-purple-600 text-xl">
-                          {powerUp.type === 'shield' && '🛡️'}
-                          {powerUp.type === 'teleport' && '⚡'}
-                          {powerUp.type === 'swap' && '🔄'}
-                          {powerUp.type === 'speed' && '🚀'}
+                          {powerUp.type === "shield" && "🛡️"}
+                          {powerUp.type === "teleport" && "⚡"}
+                          {powerUp.type === "swap" && "🔄"}
+                          {powerUp.type === "speed" && "🚀"}
                           {/* {powerUp.type === 'freeze' && '❄️'} */}
                         </div>
                       </div>
@@ -300,7 +332,7 @@ const LudoGame: React.FC = () => {
         {/* Power-up Dialog */}
         <PowerUpDialog
           isOpen={showPowerUpDialog}
-          powerUpType={selectedPowerUp || ''}
+          powerUpType={selectedPowerUp || ""}
           onClose={closePowerUpDialog}
           onConfirm={handlePowerUpConfirm}
           gameState={gameState}
@@ -315,11 +347,15 @@ const LudoGame: React.FC = () => {
               <div className="text-sm">Turns Played</div>
             </div>
             <div>
-              <div className="text-2xl font-bold">{gameState.players.length}</div>
+              <div className="text-2xl font-bold">
+                {gameState.players.length}
+              </div>
               <div className="text-sm">Players</div>
             </div>
             <div>
-              <div className="text-2xl font-bold">{availablePowerUps.length}</div>
+              <div className="text-2xl font-bold">
+                {availablePowerUps.length}
+              </div>
               <div className="text-sm">Power-ups</div>
             </div>
             {/* <div>

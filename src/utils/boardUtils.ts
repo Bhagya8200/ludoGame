@@ -243,7 +243,11 @@ export const canTokenMove = (
   diceValue: number,
   gameState: any
 ): boolean => {
-  if (token.isFinished || token.isFrozen) return false;
+  // Can't move if finished
+  if (token.isFinished) return false;
+
+  // Can't move if frozen
+  if (token.isFrozen && token.frozenTurns > 0) return false;
 
   // Token at home can only move with 6
   if (token.position === -1 && diceValue !== 6) return false;
@@ -251,7 +255,7 @@ export const canTokenMove = (
   // Check if move would exceed home run
   if (token.isInHomeRun) {
     const homeRunPosition = token.position - 56;
-    return homeRunPosition + diceValue <= 6; // 7 positions in home run (0-6)
+    return homeRunPosition + diceValue <= 6; // 6 positions in home run (0-5), finish at 6
   }
 
   return true;
@@ -361,6 +365,7 @@ export const generatePowerUp = (): PowerUp => {
     type: types[Math.floor(Math.random() * types.length)],
     position: positions[Math.floor(Math.random() * positions.length)],
     isActive: true,
+    id: `powerup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Add unique ID
   };
 };
 
@@ -390,7 +395,11 @@ export const getTokensAtPosition = (
   const tokens: Token[] = [];
   players.forEach((player) => {
     player.tokens.forEach((token) => {
-      if (token.position === position && !token.isFinished) {
+      if (
+        token.position === position &&
+        !token.isFinished &&
+        !token.isInHomeRun
+      ) {
         tokens.push(token);
       }
     });
@@ -402,9 +411,22 @@ export const canKillToken = (
   attackerToken: Token,
   defenderToken: Token
 ): boolean => {
+  // Can't kill if defender has shield
   if (defenderToken.hasShield) return false;
+
+  // Can't kill on safe positions
   if (isPositionSafe(defenderToken.position)) return false;
-  return attackerToken.playerId !== defenderToken.playerId;
+
+  // Can't kill tokens in home run
+  if (defenderToken.isInHomeRun) return false;
+
+  // Can't kill own tokens
+  if (attackerToken.playerId === defenderToken.playerId) return false;
+
+  // Can't kill finished tokens
+  if (defenderToken.isFinished) return false;
+
+  return true;
 };
 
 export const formatTime = (seconds: number): string => {
@@ -413,6 +435,34 @@ export const formatTime = (seconds: number): string => {
 
 export const rollDice = (): number => {
   return Math.floor(Math.random() * 6) + 1;
+};
+
+export const hasPowerUpAt = (
+  powerUps: PowerUp[],
+  position: number
+): PowerUp | null => {
+  return powerUps.find((p) => p.position === position && p.isActive) || null;
+};
+
+export const getValidTeleportPositions = (
+  gameState: any,
+  playerColor: string
+): number[] => {
+  const validPositions: number[] = [];
+
+  // Add all main board positions except current token positions
+  for (let i = 0; i < 52; i++) {
+    const tokensHere = getTokensAtPosition(gameState.players, i);
+    // Allow teleporting to positions with no tokens, or positions with own tokens
+    if (
+      tokensHere.length === 0 ||
+      tokensHere.every((t) => t.playerId === gameState.currentPlayer?.id)
+    ) {
+      validPositions.push(i);
+    }
+  }
+
+  return validPositions;
 };
 
 export const createToken = (id: string, playerId: string): Token => {

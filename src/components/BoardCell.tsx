@@ -2,6 +2,7 @@ import {
   isPositionSafe,
   isPowerUpPosition,
   isTrapPosition,
+  getBoardPosition, // Import this function
 } from "../utils/boardUtils";
 
 export const BoardCell: React.FC<{
@@ -12,6 +13,9 @@ export const BoardCell: React.FC<{
   const isSafe = isPositionSafe(position);
   const isPowerUp = isPowerUpPosition(position);
   const isTrap = isTrapPosition(position);
+
+  // Get the actual board position coordinates
+  const boardPosition = getBoardPosition(position);
 
   let cellClass = `absolute w-10 h-10 border-2 flex items-center justify-center text-xs transition-all duration-300 cursor-pointer`;
 
@@ -29,8 +33,8 @@ export const BoardCell: React.FC<{
     <div
       className={cellClass}
       style={{
-        left: `${0 * 40}px`,
-        top: `${0 * 40}px`,
+        left: `${boardPosition.x * 40}px`, // Use actual position
+        top: `${boardPosition.y * 40}px`, // Use actual position
         borderRadius: "8px",
       }}
       onClick={onClick}

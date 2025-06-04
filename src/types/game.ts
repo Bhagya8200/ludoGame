@@ -20,6 +20,7 @@ export interface PowerUp {
   type: 'shield' | 'speed' | 'teleport' | 'swap';
   position: number;
   isActive: boolean;
+  id: string
 }
 
 export interface Player {
